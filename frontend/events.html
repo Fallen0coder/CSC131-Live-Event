@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Events &mdash; Live Event</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+      <div class="nav-container">
+        <a href="index.html" class="nav-logo">Live Event</a>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html" class="nav-active">Events</a></li>
+          <li><a href="profile.html">Profile</a></li>
+          <li><a href="login.html" class="nav-login">Login</a></li>
+        </ul>
+      </div>
+    </nav>
+
+    <!-- Page Header -->
+    <header class="page-header">
+      <div class="page-header-content">
+        <h1>Browse Events</h1>
+        <p>Discover what's happening on and around your campus.</p>
+      </div>
+    </header>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+      <div class="filter-container">
+        <span class="filter-label">Filter by:</span>
+        <div class="filter-pills">
+          <button class="filter-pill active">All</button>
+          <button class="filter-pill">Social</button>
+          <button class="filter-pill">Career</button>
+          <button class="filter-pill">Music</button>
+          <button class="filter-pill">Sports</button>
+          <button class="filter-pill">Academic</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Events Grid -->
+    <main class="events-page">
+      <div class="events-count">Showing <strong>6 events</strong> near you</div>
+
+      <div class="events-list">
+
+        <!-- Card 1 -->
+        <div class="event-card-full">
+          <div class="ecf-left">
+            <div class="ecf-date-block">
+              <span class="ecf-month">APR</span>
+              <span class="ecf-day">12</span>
+            </div>
+          </div>
+          <div class="ecf-body">
+            <div class="ecf-top">
+              <span class="card-badge badge-social">Social</span>
+              <span class="ecf-time">7:00 PM &mdash; 10:00 PM</span>
+            </div>
+            <h2 class="ecf-title">Campus Game Night</h2>
+            <p class="ecf-desc">
+              Join fellow students for a fun night of board games, video games, and pizza.
+              A great way to unwind after midterms and meet new people from across campus.
+            </p>
+            <div class="ecf-meta">
+              <span>📍 Student Union, Room 204</span>
+              <span>👥 42 attending</span>
+            </div>
+          </div>
+          <div class="ecf-right">
+            <a href="#" class="btn-secondary">RSVP</a>
+          </div>
+        </div>
+
+        <!-- Card 2 -->
+        <div class="event-card-full">
+          <div class="ecf-left">
+            <div class="ecf-date-block">
+              <span class="ecf-month">APR</span>
+              <span class="ecf-day">18</span>
+            </div>
+          </div>
+          <div class="ecf-body">
+            <div class="ecf-top">
+              <span class="card-badge badge-career">Career</span>
+              <span class="ecf-time">10:00 AM &mdash; 3:00 PM</span>
+            </div>
+            <h2 class="ecf-title">Spring Career Fair</h2>
+            <p class="ecf-desc">
+              Connect with 50+ employers from tech, finance, healthcare, and more.
+              Bring your resume and dress to impress — internships and full-time roles available.
+            </p>
+            <div class="ecf-meta">
+              <span>📍 Main Gymnasium</span>
+              <span>👥 210 attending</span>
+            </div>
+          </div>
+          <div class="ecf-right">
+            <a href="#" class="btn-secondary">RSVP</a>
+          </div>
+        </div>
+
+        <!-- Card 3 -->
+        <div class="event-card-full">
+          <div class="ecf-left">
+            <div class="ecf-date-block">
+              <span class="ecf-month">APR</span>
+              <span class="ecf-day">25</span>
+            </div>
+          </div>
+          <div class="ecf-body">
+            <div class="ecf-top">
+              <span class="card-badge badge-music">Music</span>
+              <span class="ecf-time">5:00 PM &mdash; 9:00 PM</span>
+            </div>
+            <h2 class="ecf-title">Outdoor Concert Series</h2>
+            <p class="ecf-desc">
+              Kick back on the lawn and enjoy live performances from student bands and local artists.
+              Food trucks on site. Free admission with your student ID.
+            </p>
+            <div class="ecf-meta">
+              <span>📍 Campus Amphitheater</span>
+              <span>👥 180 attending</span>
+            </div>
+          </div>
+          <div class="ecf-right">
+            <a href="#" class="btn-secondary">RSVP</a>
+          </div>
+        </div>
+
+        <!-- Card 4 -->
+        <div class="event-card-full">
+          <div class="ecf-left">
+            <div class="ecf-date-block">
+              <span class="ecf-month">MAY</span>
+              <span class="ecf-day">2</span>
+            </div>
+          </div>
+          <div class="ecf-body">
+            <div class="ecf-top">
+              <span class="card-badge badge-sports">Sports</span>
+              <span class="ecf-time">12:00 PM &mdash; 4:00 PM</span>
+            </div>
+            <h2 class="ecf-title">Intramural Soccer Tournament</h2>
+            <p class="ecf-desc">
+              Sign up solo or with a team for our spring intramural soccer showdown.
+              All skill levels welcome. Trophies and bragging rights for the winners.
+            </p>
+            <div class="ecf-meta">
+              <span>📍 North Recreation Field</span>
+              <span>👥 88 attending</span>
+            </div>
+          </div>
+          <div class="ecf-right">
+            <a href="#" class="btn-secondary">RSVP</a>
+          </div>
+        </div>
+
+        <!-- Card 5 -->
+        <div class="event-card-full">
+          <div class="ecf-left">
+            <div class="ecf-date-block">
+              <span class="ecf-month">MAY</span>
+              <span class="ecf-day">8</span>
+            </div>
+          </div>
+          <div class="ecf-body">
+            <div class="ecf-top">
+              <span class="card-badge badge-academic">Academic</span>
+              <span class="ecf-time">2:00 PM &mdash; 5:00 PM</span>
+            </div>
+            <h2 class="ecf-title">Undergraduate Research Showcase</h2>
+            <p class="ecf-desc">
+              See groundbreaking research from students across every department. 
+              Network with faculty, ask questions, and get inspired for your own projects.
+            </p>
+            <div class="ecf-meta">
+              <span>📍 Science & Tech Building, Atrium</span>
+              <span>👥 95 attending</span>
+            </div>
+          </div>
+          <div class="ecf-right">
+            <a href="#" class="btn-secondary">RSVP</a>
+          </div>
+        </div>
+
+        <!-- Card 6 -->
+        <div class="event-card-full">
+          <div class="ecf-left">
+            <div class="ecf-date-block">
+              <span class="ecf-month">MAY</span>
+              <span class="ecf-day">15</span>
+            </div>
+          </div>
+          <div class="ecf-body">
+            <div class="ecf-top">
+              <span class="card-badge badge-social">Social</span>
+              <span class="ecf-time">6:00 PM &mdash; 11:00 PM</span>
+            </div>
+            <h2 class="ecf-title">End-of-Semester Rooftop Mixer</h2>
+            <p class="ecf-desc">
+              Celebrate making it through the semester at our rooftop social! 
+              Enjoy great views, live DJ, snacks, and connect with students from all majors.
+            </p>
+            <div class="ecf-meta">
+              <span>📍 Campus Center, Rooftop Level</span>
+              <span>👥 130 attending</span>
+            </div>
+          </div>
+          <div class="ecf-right">
+            <a href="#" class="btn-secondary">RSVP</a>
+          </div>
+        </div>
+
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>&copy; 2026 Live Event &mdash; Built for students, by students.</p>
+    </footer>
+
+  </body>
+</html>
