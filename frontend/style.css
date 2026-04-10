@@ -511,6 +511,35 @@ a {
 .badge-academic { background-color: #e8f4fd; color: #1565c0; }
 
 /* =====================
+   Auth Message Banner
+   ===================== */
+
+/* Hidden by default — JS adds msg-success or msg-error to show it */
+.auth-message {
+  display: none;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.auth-message.msg-success {
+  display: block;
+  background-color: #e6f4ea;
+  color: #2e7d32;
+  border: 1px solid #a8d5b0;
+}
+
+.auth-message.msg-error {
+  display: block;
+  background-color: #fff0f3;
+  color: #c0334d;
+  border: 1px solid #f5b8c4;
+}
+
+/* =====================
    Auth / Login Page
    ===================== */
 .auth-page {

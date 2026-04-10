@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Login &mdash; Live Event</title>
+    <title>Sign Up &mdash; Live Event</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -21,7 +21,7 @@
       </div>
     </nav>
 
-    <!-- Login Page Body -->
+    <!-- Signup Page Body -->
     <main class="auth-page">
 
       <div class="auth-blob"></div>
@@ -29,16 +29,15 @@
       <div class="auth-card">
 
         <div class="auth-header">
-          <span class="auth-icon">🎟️</span>
-          <h1>Welcome back</h1>
-          <p>Log in to discover events and connect with people.</p>
+          <span class="auth-icon">🎉</span>
+          <h1>Create your account</h1>
+          <p>Join Live Event and start discovering what's happening near you.</p>
         </div>
 
         <!-- Status message (hidden until fetch gets a response) -->
-        <div id="login-msg" class="auth-message" aria-live="polite"></div>
+        <div id="signup-msg" class="auth-message" aria-live="polite"></div>
 
-        <!-- We use id="login-form" so JavaScript can find it -->
-        <form id="login-form" class="auth-form" action="#" method="post" novalidate>
+        <form id="signup-form" class="auth-form" action="#" method="post" novalidate>
 
           <div class="form-group">
             <label for="email">Email address</label>
@@ -52,25 +51,33 @@
           </div>
 
           <div class="form-group">
-            <label for="password">
-              Password
-              <a href="#" class="forgot-link">Forgot password?</a>
-            </label>
+            <label for="password">Password</label>
             <input
               type="password"
               id="password"
               name="password"
-              placeholder="Enter your password"
+              placeholder="At least 6 characters"
               required
             />
           </div>
 
-          <button type="submit" id="login-btn" class="btn-primary btn-full">Log In</button>
+          <div class="form-group">
+            <label for="confirm-password">Confirm Password</label>
+            <input
+              type="password"
+              id="confirm-password"
+              name="confirm_password"
+              placeholder="Re-enter your password"
+              required
+            />
+          </div>
+
+          <button type="submit" id="signup-btn" class="btn-primary btn-full">Create Account</button>
 
         </form>
 
         <p class="auth-switch">
-          Don't have an account? <a href="signup.html">Sign up for free</a>
+          Already have an account? <a href="login.html">Log in</a>
         </p>
 
         <div class="auth-divider"><span>or continue with</span></div>
@@ -105,26 +112,36 @@
         box.className = "auth-message " + (isSuccess ? "msg-success" : "msg-error");
       }
 
-      // ── Login form submission ────────────────────────────────────────────
-      document.getElementById("login-form").addEventListener("submit", async function (e) {
-        e.preventDefault(); // stop the page from reloading
+      // ── Signup form submission ───────────────────────────────────────────
+      document.getElementById("signup-form").addEventListener("submit", async function (e) {
+        e.preventDefault();
 
         const email    = document.getElementById("email").value.trim();
         const password = document.getElementById("password").value.trim();
-        const btn      = document.getElementById("login-btn");
+        const confirm  = document.getElementById("confirm-password").value.trim();
+        const btn      = document.getElementById("signup-btn");
 
-        // Basic front-end check before hitting the server
-        if (!email || !password) {
-          showMessage("login-msg", "Please enter your email and password.", false);
+        // Front-end validation before hitting the server
+        if (!email || !password || !confirm) {
+          showMessage("signup-msg", "Please fill in all fields.", false);
           return;
         }
 
-        // Disable button while waiting for the server
+        if (password.length < 6) {
+          showMessage("signup-msg", "Password must be at least 6 characters.", false);
+          return;
+        }
+
+        if (password !== confirm) {
+          showMessage("signup-msg", "Passwords do not match.", false);
+          return;
+        }
+
         btn.disabled    = true;
-        btn.textContent = "Logging in…";
+        btn.textContent = "Creating account…";
 
         try {
-          const response = await fetch(API + "/login", {
+          const response = await fetch(API + "/signup", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password })
@@ -133,20 +150,19 @@
           const data = await response.json();
 
           if (data.success) {
-            showMessage("login-msg", "✅ " + data.message, true);
-            // Redirect to the homepage after a short delay
-            setTimeout(() => { window.location.href = "index.html"; }, 1500);
+            showMessage("signup-msg", "✅ " + data.message, true);
+            // Redirect to login after a short delay
+            setTimeout(() => { window.location.href = "login.html"; }, 2000);
           } else {
-            showMessage("login-msg", "❌ " + data.message, false);
+            showMessage("signup-msg", "❌ " + data.message, false);
           }
 
         } catch (err) {
-          // This fires if the Flask server isn't running
-          showMessage("login-msg", "❌ Could not reach the server. Is Flask running?", false);
+          showMessage("signup-msg", "❌ Could not reach the server. Is Flask running?", false);
         }
 
         btn.disabled    = false;
-        btn.textContent = "Log In";
+        btn.textContent = "Create Account";
       });
     </script>
 
