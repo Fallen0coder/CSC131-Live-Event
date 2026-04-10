@@ -11,9 +11,9 @@ This project is a web application designed to help college students find local e
 - RSVP to events
 
 ## Tech Stack
-- Frontend: Next.js
-- Styling: Tailwind CSS
-- Backend: (to be decided)
+- Frontend: HTML
+- Styling:  CSS
+- Backend: Python
 
 ## Team
 - Samay Advani
