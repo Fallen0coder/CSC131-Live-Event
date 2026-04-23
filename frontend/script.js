@@ -1,0 +1,65 @@
+const browseButton = document.getElementById("browse-btn");
+
+if (browseButton) {
+  browseButton.addEventListener("click", function () {
+    window.location.href = "events.html";
+  });
+}
+
+const eventsList = document.getElementById("events-list");
+
+const sampleEvents = [
+  {
+    title: "Campus Music Night",
+    date: "May 2, 2026 - 7:00 PM",
+    location: "Student Center Hall",
+    description: "Enjoy live performances from student bands and local artists."
+  },
+  {
+    title: "Tech Club Hackathon",
+    date: "May 6, 2026 - 10:00 AM",
+    location: "Engineering Lab",
+    description: "Build creative projects with teammates and win fun prizes."
+  },
+  {
+    title: "Career Networking Fair",
+    date: "May 9, 2026 - 1:00 PM",
+    location: "Main Gym",
+    description: "Meet recruiters, explore internships, and grow your network."
+  },
+  {
+    title: "Outdoor Movie Evening",
+    date: "May 12, 2026 - 8:00 PM",
+    location: "Campus Lawn",
+    description: "Bring a blanket and relax with friends under the stars."
+  },
+  {
+    title: "Spring Sports Festival",
+    date: "May 15, 2026 - 11:00 AM",
+    location: "Athletics Field",
+    description: "Join friendly games, team challenges, and fitness activities."
+  }
+];
+
+if (eventsList) {
+  sampleEvents.forEach(function (event) {
+    const card = document.createElement("article");
+    card.className = "event-card";
+
+    card.innerHTML =
+      "<h3>" + event.title + "</h3>" +
+      "<p class='event-meta'><strong>Date:</strong> " + event.date + "</p>" +
+      "<p class='event-meta'><strong>Location:</strong> " + event.location + "</p>" +
+      "<p class='event-description'>" + event.description + "</p>" +
+      "<button class='rsvp-btn'>RSVP</button>";
+
+    const rsvpButton = card.querySelector(".rsvp-btn");
+    if (rsvpButton) {
+      rsvpButton.addEventListener("click", function () {
+        alert("You RSVP’d to this event!");
+      });
+    }
+
+    eventsList.appendChild(card);
+  });
+}
