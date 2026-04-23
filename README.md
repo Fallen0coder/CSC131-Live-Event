@@ -13,7 +13,7 @@ This project is a web application designed to help college students find local e
 ## Tech Stack
 - Frontend: HTML
 - Styling:  CSS
-- Backend: Python
+- Backend: JavaScript
 
 ## Team
 - Samay Advani
