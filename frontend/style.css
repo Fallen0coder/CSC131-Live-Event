@@ -90,6 +90,11 @@ body {
   color: var(--color-primary-dark);
 }
 
+.nav-links a.active {
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+
 /* ——— Homepage hero ——— */
 .hero.hero--home {
   position: relative;
@@ -569,7 +574,8 @@ body {
 }
 
 .login-page,
-.signup-page {
+.signup-page,
+.profile-page {
   min-height: calc(100vh - 80px);
   display: flex;
   align-items: center;
@@ -627,11 +633,35 @@ body {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
+.form-field textarea {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background-color: #f9fafb;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
 .form-field input:focus {
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
   background-color: #ffffff;
+}
+
+.form-field textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  background-color: #ffffff;
+}
+
+.profile-card {
+  max-width: 560px;
 }
 
 .login-submit-btn {

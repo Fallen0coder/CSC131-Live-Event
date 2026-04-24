@@ -215,6 +215,8 @@ if (loginForm && loginEmail && loginPassword) {
       alert("Please fill all fields");
     } else {
       alert("Login successful (demo)");
+      localStorage.setItem("liveEventLoggedIn", "true");
+      window.location.href = "events.html";
     }
   });
 }
@@ -256,5 +258,48 @@ if (
     }
 
     alert("Account created (demo)");
+    localStorage.setItem("liveEventLoggedIn", "true");
+    window.location.href = "profile.html";
+  });
+}
+
+const profileForm = document.getElementById("profile-form");
+const profileFullName = document.getElementById("profile-fullname");
+const profileBio = document.getElementById("profile-bio");
+const profileInterests = document.getElementById("profile-interests");
+const profileSchool = document.getElementById("profile-school");
+const profileLocation = document.getElementById("profile-location");
+
+if (
+  profileForm &&
+  profileFullName &&
+  profileBio &&
+  profileInterests &&
+  profileSchool &&
+  profileLocation
+) {
+  profileForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const fullName = profileFullName.value.trim();
+    const bio = profileBio.value.trim();
+    const interests = profileInterests.value.trim();
+    const school = profileSchool.value.trim();
+    const location = profileLocation.value.trim();
+
+    if (
+      fullName === "" ||
+      bio === "" ||
+      interests === "" ||
+      school === "" ||
+      location === ""
+    ) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    alert("Profile saved (demo)");
+    localStorage.setItem("liveEventProfileReady", "true");
+    window.location.href = "events.html";
   });
 }
