@@ -10,7 +10,7 @@ const eventsList = document.getElementById("events-list");
 
 const sampleEvents = [
   {
-    title: "Campus Music Night",
+    title: "Samay's Birthday Party",
     date: "May 2, 2026 - 7:00 PM",
     location: "Student Center Hall",
     description: "Enjoy live performances from student bands and local artists."
@@ -38,6 +38,12 @@ const sampleEvents = [
     date: "May 15, 2026 - 11:00 AM",
     location: "Athletics Field",
     description: "Join friendly games, team challenges, and fitness activities."
+  },
+  {
+    title: "Cars and Coffee",
+    date: "June 2, 2026 - 11:00 PM",
+    location: "Old Town Sacramento",
+    description: "Join us for a nice morning cup of coffee and look at exotic cars."
   }
 ];
 
