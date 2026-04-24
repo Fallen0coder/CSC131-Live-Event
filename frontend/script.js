@@ -63,3 +63,62 @@ if (eventsList) {
     eventsList.appendChild(card);
   });
 }
+
+const loginForm = document.getElementById("login-form");
+const loginEmail = document.getElementById("login-email");
+const loginPassword = document.getElementById("login-password");
+
+if (loginForm && loginEmail && loginPassword) {
+  loginForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const email = loginEmail.value.trim();
+    const password = loginPassword.value;
+
+    if (email === "" || password === "") {
+      alert("Please fill all fields");
+    } else {
+      alert("Login successful (demo)");
+    }
+  });
+}
+
+const signupForm = document.getElementById("signup-form");
+const signupFullname = document.getElementById("signup-fullname");
+const signupEmailField = document.getElementById("signup-email");
+const signupPasswordField = document.getElementById("signup-password");
+const signupConfirmField = document.getElementById("signup-confirm");
+
+if (
+  signupForm &&
+  signupFullname &&
+  signupEmailField &&
+  signupPasswordField &&
+  signupConfirmField
+) {
+  signupForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const fullName = signupFullname.value.trim();
+    const email = signupEmailField.value.trim();
+    const password = signupPasswordField.value;
+    const confirmPassword = signupConfirmField.value;
+
+    if (
+      fullName === "" ||
+      email === "" ||
+      password === "" ||
+      confirmPassword === ""
+    ) {
+      alert("Please fill all fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      alert("Passwords do not match");
+      return;
+    }
+
+    alert("Account created (demo)");
+  });
+}
