@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Event - Login</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-content">
+      <h1 class="logo">Live Event</h1>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li><a href="login.html">Login</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="about.html">About Us</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="login-page">
+    <div class="container login-page-inner">
+      <form id="login-form" class="login-card">
+        <h2>Log in</h2>
+        <p class="login-subtitle">Enter your email and password to continue.</p>
+
+        <div class="form-field">
+          <label for="login-email">Email</label>
+          <input
+            type="email"
+            id="login-email"
+            name="email"
+            placeholder="you@example.edu"
+            autocomplete="email"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="login-password">Password</label>
+          <input
+            type="password"
+            id="login-password"
+            name="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+          />
+        </div>
+
+        <button type="submit" id="login-submit-btn" class="login-submit-btn">
+          Login
+        </button>
+
+        <p class="login-signup">
+          Don't have an account?
+          <a href="signup.html">Sign up</a>
+        </p>
+      </form>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

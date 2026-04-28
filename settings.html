@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Event - Settings</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-content">
+      <h1 class="logo">Live Event</h1>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li><a href="login.html">Login</a></li>
+          <li><a class="active" href="settings.html">Settings</a></li>
+          <li><a href="about.html">About Us</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="settings-page">
+    <div class="container settings-layout">
+      <header class="settings-header">
+        <h2>Settings</h2>
+        <p>Customize the demo experience. Changes are saved on your device using localStorage.</p>
+      </header>
+
+      <section class="settings-grid" aria-label="Settings sections">
+        <article class="settings-card" aria-labelledby="appearance-heading">
+          <div class="settings-card-header">
+            <h3 id="appearance-heading">Appearance</h3>
+            <p class="settings-card-subtitle">Choose a theme for all pages.</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="settings-actions">
+              <button type="button" id="theme-light-btn" class="btn btn-secondary settings-btn">
+                Light mode
+              </button>
+              <button type="button" id="theme-dark-btn" class="btn btn-primary settings-btn">
+                Dark mode
+              </button>
+            </div>
+            <p class="settings-hint" id="theme-status" role="status" aria-live="polite"></p>
+          </div>
+        </article>
+
+        <article class="settings-card" aria-labelledby="account-heading">
+          <div class="settings-card-header">
+            <h3 id="account-heading">Account Settings</h3>
+            <p class="settings-card-subtitle">Demo password change (no backend).</p>
+          </div>
+          <div class="settings-card-body">
+            <form id="password-form" class="settings-form">
+              <div class="form-field">
+                <label for="current-password">Current password</label>
+                <input type="password" id="current-password" autocomplete="current-password" />
+              </div>
+
+              <div class="form-field">
+                <label for="new-password">New password</label>
+                <input type="password" id="new-password" autocomplete="new-password" />
+              </div>
+
+              <div class="form-field">
+                <label for="confirm-password">Confirm new password</label>
+                <input type="password" id="confirm-password" autocomplete="new-password" />
+              </div>
+
+              <button type="submit" class="login-submit-btn">Update password</button>
+              <p id="password-message" class="settings-message" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </article>
+
+        <article class="settings-card" aria-labelledby="notifications-heading">
+          <div class="settings-card-header">
+            <h3 id="notifications-heading">Notifications</h3>
+            <p class="settings-card-subtitle">Pick what you want to hear about.</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="toggle-row">
+              <div>
+                <p class="toggle-title">Email notifications</p>
+                <p class="toggle-subtitle">General updates and announcements.</p>
+              </div>
+              <label class="toggle-switch">
+                <input id="notif-email" type="checkbox" class="toggle-input" />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <p class="toggle-title">Event reminders</p>
+                <p class="toggle-subtitle">Heads-up before events you RSVP to.</p>
+              </div>
+              <label class="toggle-switch">
+                <input id="notif-reminders" type="checkbox" class="toggle-input" />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <p class="toggle-title">Campus/community updates</p>
+                <p class="toggle-subtitle">New clubs, meetups, and campus news.</p>
+              </div>
+              <label class="toggle-switch">
+                <input id="notif-campus" type="checkbox" class="toggle-input" />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+            </div>
+          </div>
+        </article>
+
+        <article class="settings-card" aria-labelledby="privacy-heading">
+          <div class="settings-card-header">
+            <h3 id="privacy-heading">Privacy</h3>
+            <p class="settings-card-subtitle">Control what others can see.</p>
+          </div>
+          <div class="settings-card-body">
+            <div class="toggle-row">
+              <div>
+                <p class="toggle-title">Public profile</p>
+                <p class="toggle-subtitle">Allow others to view your profile details.</p>
+              </div>
+              <label class="toggle-switch">
+                <input id="privacy-public-profile" type="checkbox" class="toggle-input" />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+            </div>
+
+            <div class="toggle-row">
+              <div>
+                <p class="toggle-title">Show interests on profile</p>
+                <p class="toggle-subtitle">Display your interests to other users.</p>
+              </div>
+              <label class="toggle-switch">
+                <input id="privacy-show-interests" type="checkbox" class="toggle-input" />
+                <span class="toggle-slider" aria-hidden="true"></span>
+              </label>
+            </div>
+          </div>
+        </article>
+
+        <article class="settings-card settings-card-danger" aria-labelledby="danger-heading">
+          <div class="settings-card-header">
+            <h3 id="danger-heading">Danger Zone</h3>
+            <p class="settings-card-subtitle">This is a demo — actions are simulated.</p>
+          </div>
+          <div class="settings-card-body">
+            <p class="settings-hint">
+              Deleting an account would normally remove your data from a server. Since this project
+              has no backend, we only simulate deletion by clearing demo values from localStorage.
+            </p>
+            <button type="button" id="delete-account-btn" class="danger-btn">
+              Delete account
+            </button>
+            <p id="delete-message" class="settings-message" role="status" aria-live="polite"></p>
+          </div>
+        </article>
+      </section>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
