@@ -1,3 +1,41 @@
+// ---------------------------
+// Theme (works on every page)
+// ---------------------------
+// We keep the theme in localStorage so it persists across refreshes and pages.
+// The CSS applies dark mode when <body> has the class "theme-dark".
+const LIVE_EVENT_THEME_KEY = "liveEventTheme";
+
+function getSavedTheme() {
+  // Default to light mode if nothing has been saved yet.
+  return localStorage.getItem(LIVE_EVENT_THEME_KEY) || "light";
+}
+
+function applyTheme(theme) {
+  // Defensive check: theme should be "light" or "dark".
+  const isDark = theme === "dark";
+  document.body.classList.toggle("theme-dark", isDark);
+}
+
+function setTheme(theme) {
+  localStorage.setItem(LIVE_EVENT_THEME_KEY, theme);
+  applyTheme(theme);
+  updateThemeStatusText();
+}
+
+function updateThemeStatusText() {
+  const status = document.getElementById("theme-status");
+  if (!status) return;
+
+  const theme = getSavedTheme();
+  status.textContent =
+    theme === "dark"
+      ? "Dark mode is enabled."
+      : "Light mode is enabled.";
+}
+
+// Apply the saved theme as soon as this script runs.
+applyTheme(getSavedTheme());
+
 const browseButton = document.getElementById("browse-btn");
 
 if (browseButton) {
@@ -301,5 +339,148 @@ if (
     alert("Profile saved (demo)");
     localStorage.setItem("liveEventProfileReady", "true");
     window.location.href = "events.html";
+  });
+}
+
+// ---------------------------
+// Settings page interactions
+// ---------------------------
+
+// Appearance buttons
+const themeLightBtn = document.getElementById("theme-light-btn");
+const themeDarkBtn = document.getElementById("theme-dark-btn");
+
+if (themeLightBtn) {
+  themeLightBtn.addEventListener("click", function () {
+    setTheme("light");
+  });
+}
+
+if (themeDarkBtn) {
+  themeDarkBtn.addEventListener("click", function () {
+    setTheme("dark");
+  });
+}
+
+// If we're on the settings page, show the initial theme status text.
+updateThemeStatusText();
+
+// Helper to load/save a checkbox toggle using localStorage.
+function bindToggleToLocalStorage(elementId, storageKey, defaultValue) {
+  const toggle = document.getElementById(elementId);
+  if (!toggle) return;
+
+  const saved = localStorage.getItem(storageKey);
+  if (saved === null) {
+    toggle.checked = Boolean(defaultValue);
+  } else {
+    toggle.checked = saved === "true";
+  }
+
+  toggle.addEventListener("change", function () {
+    localStorage.setItem(storageKey, String(toggle.checked));
+  });
+}
+
+// Notifications
+bindToggleToLocalStorage("notif-email", "liveEventNotifEmail", true);
+bindToggleToLocalStorage("notif-reminders", "liveEventNotifReminders", true);
+bindToggleToLocalStorage("notif-campus", "liveEventNotifCampusUpdates", false);
+
+// Privacy
+bindToggleToLocalStorage("privacy-public-profile", "liveEventPrivacyPublicProfile", true);
+bindToggleToLocalStorage("privacy-show-interests", "liveEventPrivacyShowInterests", true);
+
+// Apply the "Show interests" privacy setting on the profile page.
+// This is still a demo, but it demonstrates how a setting can affect other pages.
+const showInterestsSetting = localStorage.getItem("liveEventPrivacyShowInterests");
+const profileInterestsField = document.getElementById("profile-interests");
+if (profileInterestsField && showInterestsSetting === "false") {
+  // Hide the entire field row if the user chose not to show interests.
+  const wrapper = profileInterestsField.closest(".form-field");
+  if (wrapper) wrapper.style.display = "none";
+}
+
+// Password reset / change (demo)
+const passwordForm = document.getElementById("password-form");
+const currentPasswordInput = document.getElementById("current-password");
+const newPasswordInput = document.getElementById("new-password");
+const confirmPasswordInput = document.getElementById("confirm-password");
+const passwordMessage = document.getElementById("password-message");
+
+function showSettingsMessage(element, message, type) {
+  if (!element) return;
+  element.textContent = message;
+  element.classList.remove("is-success", "is-error");
+  if (type === "success") element.classList.add("is-success");
+  if (type === "error") element.classList.add("is-error");
+}
+
+if (
+  passwordForm &&
+  currentPasswordInput &&
+  newPasswordInput &&
+  confirmPasswordInput &&
+  passwordMessage
+) {
+  passwordForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const currentPassword = currentPasswordInput.value.trim();
+    const newPassword = newPasswordInput.value;
+    const confirmPassword = confirmPasswordInput.value;
+
+    if (currentPassword === "" || newPassword === "" || confirmPassword === "") {
+      showSettingsMessage(passwordMessage, "Please fill all password fields.", "error");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showSettingsMessage(passwordMessage, "New password and confirmation do not match.", "error");
+      return;
+    }
+
+    // Demo success: in a real app, you'd send this to a backend.
+    showSettingsMessage(passwordMessage, "Password updated successfully (demo).", "success");
+    passwordForm.reset();
+  });
+}
+
+// Danger zone: delete account (simulated)
+const deleteAccountBtn = document.getElementById("delete-account-btn");
+const deleteMessage = document.getElementById("delete-message");
+
+if (deleteAccountBtn && deleteMessage) {
+  deleteAccountBtn.addEventListener("click", function () {
+    const confirmed = confirm(
+      "Are you sure you want to delete your account? This is a demo and will only clear localStorage values."
+    );
+
+    if (!confirmed) return;
+
+    // Clear demo "account" and settings data.
+    const keysToRemove = [
+      "liveEventLoggedIn",
+      "liveEventProfileReady",
+      LIVE_EVENT_THEME_KEY,
+      "liveEventNotifEmail",
+      "liveEventNotifReminders",
+      "liveEventNotifCampusUpdates",
+      "liveEventPrivacyPublicProfile",
+      "liveEventPrivacyShowInterests"
+    ];
+
+    keysToRemove.forEach(function (key) {
+      localStorage.removeItem(key);
+    });
+
+    // After clearing, fall back to light mode visually.
+    applyTheme(getSavedTheme());
+
+    showSettingsMessage(
+      deleteMessage,
+      "Account deleted (simulated). Demo data was cleared from localStorage — no server changes were made.",
+      "success"
+    );
   });
 }
