@@ -288,27 +288,47 @@ if (loginForm && loginEmail && loginPassword) {
   });
 }
 
-const signupForm = document.getElementById("signup-form");
-const signupFullname = document.getElementById("signup-fullname");
-const signupEmailField = document.getElementById("signup-email");
-const signupPasswordField = document.getElementById("signup-password");
-const signupConfirmField = document.getElementById("signup-confirm");
+// ---------------------------
+// Signup page: send new account to backend
+// ---------------------------
+// When the user submits the signup form, we send their info to the backend
+// API instead of just pretending it worked. The backend will create the
+// account (or return an error like "email already registered") and we react
+// based on the response.
+document.addEventListener("DOMContentLoaded", function () {
+  // Find the signup form and its input fields. If the form isn't on this
+  // page (because the user is on Home, Events, etc.), we just stop here.
+  const signupForm = document.getElementById("signup-form");
+  const signupFullname = document.getElementById("signup-fullname");
+  const signupEmailField = document.getElementById("signup-email");
+  const signupPasswordField = document.getElementById("signup-password");
+  const signupConfirmField = document.getElementById("signup-confirm");
 
-if (
-  signupForm &&
-  signupFullname &&
-  signupEmailField &&
-  signupPasswordField &&
-  signupConfirmField
-) {
-  signupForm.addEventListener("submit", function (e) {
-    e.preventDefault();
+  if (
+    !signupForm ||
+    !signupFullname ||
+    !signupEmailField ||
+    !signupPasswordField ||
+    !signupConfirmField
+  ) {
+    return;
+  }
 
+  // The backend signup endpoint.
+  const SIGNUP_API_URL = "http://localhost:3000/api/signup";
+
+  signupForm.addEventListener("submit", function (event) {
+    // Stop the browser from doing its default form submit (which would
+    // reload the page).
+    event.preventDefault();
+
+    // Step 1: read the values the user typed in.
     const fullName = signupFullname.value.trim();
     const email = signupEmailField.value.trim();
     const password = signupPasswordField.value;
     const confirmPassword = signupConfirmField.value;
 
+    // Step 2: simple client-side checks before we even hit the network.
     if (
       fullName === "" ||
       email === "" ||
@@ -324,11 +344,47 @@ if (
       return;
     }
 
-    alert("Account created (demo)");
-    localStorage.setItem("liveEventLoggedIn", "true");
-    window.location.href = "profile.html";
+    // Step 3: send the data to the backend as JSON.
+    // The backend expects: { name, email, password }
+    fetch(SIGNUP_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name: fullName,
+        email: email,
+        password: password
+      })
+    })
+      .then(function (response) {
+        // Try to read the JSON body either way (success or error) so we
+        // can show the backend's error message when something goes wrong.
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          // Step 4a: success path. Tell the user and send them to login.
+          alert("Account created successfully");
+          window.location.href = "login.html";
+        } else {
+          // Step 4b: the server responded but rejected the signup
+          // (e.g. duplicate email or missing fields). Show its message.
+          const message =
+            (result.data && result.data.error) ||
+            "Sign up failed. Please try again.";
+          alert(message);
+        }
+      })
+      .catch(function (error) {
+        // Step 5: network failure (server down, no internet, etc.).
+        console.error("Signup request failed:", error);
+        alert("Could not reach the server. Please try again later.");
+      });
   });
-}
+});
 
 const profileForm = document.getElementById("profile-form");
 const profileFullName = document.getElementById("profile-fullname");
