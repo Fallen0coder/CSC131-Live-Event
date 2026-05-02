@@ -189,6 +189,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // The backend exposes the events list at this URL.
   const EVENTS_API_URL = "http://localhost:3000/api/events";
+  // The backend RSVP endpoint. Each click on a card's RSVP button posts here.
+  const RSVP_API_URL = "http://localhost:3000/api/rsvp";
+
+  // Real user sessions aren't fully built yet, so for now we hard-code a
+  // demo user. Once login is wired up end-to-end we can replace this with
+  // the actual logged-in user's id.
+  const userId = 1;
 
   // Helper: format a date string from the API ("2026-05-15") into something
   // a little friendlier for humans ("May 15, 2026"). If parsing fails for
@@ -203,6 +210,53 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  // Helper: send an RSVP for the given event to the backend, and update
+  // the button based on the response.
+  function sendRsvp(rsvpButton, event) {
+    // Prevent double-clicks while the request is in flight.
+    rsvpButton.disabled = true;
+
+    fetch(RSVP_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        userId: userId,
+        eventId: event.id
+      })
+    })
+      .then(function (response) {
+        // Read the JSON body either way so we can show the backend's
+        // error message when something goes wrong.
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          // Success: update the button so the user sees their RSVP stuck.
+          rsvpButton.textContent = "RSVP\u2019d";
+          rsvpButton.disabled = true;
+          alert("You RSVP\u2019d to this event!");
+        } else {
+          // Server rejected the RSVP (e.g. unknown user/event). Show its
+          // message and re-enable the button so the user can try again.
+          const message =
+            (result.data && result.data.error) ||
+            "Could not RSVP. Please try again.";
+          alert(message);
+          rsvpButton.disabled = false;
+        }
+      })
+      .catch(function (error) {
+        // Network failure (server down, no internet, etc.).
+        console.error("RSVP request failed:", error);
+        alert("Could not reach the server. Please try again later.");
+        rsvpButton.disabled = false;
+      });
+  }
+
   // Helper: build one event card element from an event object.
   function createEventCard(event) {
     const card = document.createElement("article");
@@ -214,13 +268,16 @@ document.addEventListener("DOMContentLoaded", function () {
         formatEventDate(event.date) + "</p>" +
       "<p class='event-meta'><strong>Location:</strong> " +
         event.location + "</p>" +
-      "<button class='rsvp-btn'>RSVP</button>";
+      "<button class='rsvp-btn' type='button'>RSVP</button>";
 
-    // Attach a simple click handler to the RSVP button.
+    // Wire the RSVP button up to the backend.
     const rsvpButton = card.querySelector(".rsvp-btn");
     if (rsvpButton) {
-      rsvpButton.addEventListener("click", function () {
-        alert("You RSVP’d to \"" + event.title + "\"!");
+      rsvpButton.addEventListener("click", function (clickEvent) {
+        // Stop any default behavior just in case (e.g. if a future
+        // version puts this button inside a form).
+        clickEvent.preventDefault();
+        sendRsvp(rsvpButton, event);
       });
     }
 
