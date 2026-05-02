@@ -1,21 +1,135 @@
-# Live Event Web App
+# 🎉 Live Event Web App
 
-## Description
-This project is a web application designed to help college students find local events and meet new people.
+## 🌐 Live Demo
 
-## Features
-- User login and signup
-- User profiles
-- Browse nearby events
-- View event details
-- RSVP to events
+*(Add your deployed link here when ready)*
 
-## Tech Stack
-- Frontend: HTML
-- Styling:  CSS
-- Backend: JavaScript
 
-## Team
-- Samay Advani
-- Bashar Levingston 
-- Ruben Martinez
+---
+
+## 📌 Description
+
+The Live Event Web App is a full-stack web application designed to help college students discover and connect through local events. Users can create accounts, browse events happening around campus (such as Sac State), and RSVP to events they are interested in.
+
+---
+
+## 🚀 Features
+
+* 🔐 User Signup and Login
+* 👤 User Profile Setup
+* 📅 Browse Local Events
+* 📍 View Event Details (date, time, location, description)
+* ✅ RSVP to Events
+* 🎨 Clean and modern responsive UI
+
+---
+
+## 🛠️ Tech Stack
+
+### Frontend
+
+* HTML
+* CSS
+* JavaScript
+
+### Backend
+
+* Node.js
+* Express.js
+
+### Database *(in progress / or update when done)*
+
+* MongoDB (planned for persistent storage)
+
+---
+
+## 📂 Project Structure
+
+```
+CSC131-Live-Event/
+  frontend/
+    index.html
+    events.html
+    login.html
+    signup.html
+    profile.html
+    about.html
+    settings.html
+    style.css
+    script.js
+
+  backend/
+    server.js
+    package.json
+
+  README.md
+  .gitignore
+```
+
+---
+
+## ⚙️ How to Run Locally
+
+### 1. Clone the repository
+
+```
+git clone https://github.com/your-username/CSC131-Live-Event.git
+cd CSC131-Live-Event
+```
+
+---
+
+### 2. Start the Backend
+
+```
+cd backend
+npm install
+node server.js
+```
+
+Backend will run on:
+
+```
+http://localhost:3000
+```
+
+---
+
+### 3. Open the Frontend
+
+* Navigate to the `frontend` folder
+* Open `index.html` in your browser
+
+---
+
+## 🔄 Current Status
+
+* ✅ Frontend completed
+* ✅ Backend API created
+* ✅ Frontend connected to backend
+* 🔄 Database integration (MongoDB) in progress
+* 🔄 Deployment pending
+
+---
+
+## 👥 Team
+
+* Samay Advani 
+* Bashar Levingston
+* Ruben Martinez
+
+---
+
+## 📖 Future Improvements
+
+* 🌐 Deploy backend and frontend
+* 🗄️ Integrate MongoDB for persistent data
+* 🔐 Secure authentication (password hashing, sessions)
+* 📍 Real-time local event integration
+* 📱 Mobile responsiveness improvements
+
+---
+
+## 💡 Notes
+
+This project is part of a software engineering course and demonstrates full-stack development concepts including frontend design, backend APIs, and planned database integration.
