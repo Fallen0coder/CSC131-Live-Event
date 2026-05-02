@@ -174,69 +174,98 @@ if (featuredEventsContainer) {
   applyFeaturedFilters();
 }
 
-const eventsList = document.getElementById("events-list");
+// ---------------------------
+// Events page: load from backend
+// ---------------------------
+// The events page has a container element with id="events-container".
+// When that page loads, we fetch the list of events from the backend API
+// and build one card per event. If the request fails, we show a friendly
+// error message and log details to the console for debugging.
+document.addEventListener("DOMContentLoaded", function () {
+  // Look for the events container. If it isn't on the page (because the user
+  // is on a different page like Home or Login), we simply do nothing.
+  const eventsContainer = document.getElementById("events-container");
+  if (!eventsContainer) return;
 
-const sampleEvents = [
-  {
-    title: "Samay's Birthday Party",
-    date: "May 2, 2026 - 7:00 PM",
-    location: "Student Center Hall",
-    description: "Enjoy live performances from student bands and local artists."
-  },
-  {
-    title: "Tech Club Hackathon",
-    date: "May 6, 2026 - 10:00 AM",
-    location: "Engineering Lab",
-    description: "Build creative projects with teammates and win fun prizes."
-  },
-  {
-    title: "Career Networking Fair",
-    date: "May 9, 2026 - 1:00 PM",
-    location: "Main Gym",
-    description: "Meet recruiters, explore internships, and grow your network."
-  },
-  {
-    title: "Outdoor Movie Evening",
-    date: "May 12, 2026 - 8:00 PM",
-    location: "Campus Lawn",
-    description: "Bring a blanket and relax with friends under the stars."
-  },
-  {
-    title: "Spring Sports Festival",
-    date: "May 15, 2026 - 11:00 AM",
-    location: "Athletics Field",
-    description: "Join friendly games, team challenges, and fitness activities."
-  },
-  {
-    title: "Cars and Coffee",
-    date: "June 2, 2026 - 11:00 PM",
-    location: "Old Town Sacramento",
-    description: "Join us for a nice morning cup of coffee and look at exotic cars."
+  // The backend exposes the events list at this URL.
+  const EVENTS_API_URL = "http://localhost:3000/api/events";
+
+  // Helper: format a date string from the API ("2026-05-15") into something
+  // a little friendlier for humans ("May 15, 2026"). If parsing fails for
+  // any reason, we just fall back to the original string.
+  function formatEventDate(dateString) {
+    const parsed = new Date(dateString);
+    if (isNaN(parsed.getTime())) return dateString;
+    return parsed.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    });
   }
-];
 
-if (eventsList) {
-  sampleEvents.forEach(function (event) {
+  // Helper: build one event card element from an event object.
+  function createEventCard(event) {
     const card = document.createElement("article");
     card.className = "event-card";
 
     card.innerHTML =
       "<h3>" + event.title + "</h3>" +
-      "<p class='event-meta'><strong>Date:</strong> " + event.date + "</p>" +
-      "<p class='event-meta'><strong>Location:</strong> " + event.location + "</p>" +
-      "<p class='event-description'>" + event.description + "</p>" +
+      "<p class='event-meta'><strong>Date:</strong> " +
+        formatEventDate(event.date) + "</p>" +
+      "<p class='event-meta'><strong>Location:</strong> " +
+        event.location + "</p>" +
       "<button class='rsvp-btn'>RSVP</button>";
 
+    // Attach a simple click handler to the RSVP button.
     const rsvpButton = card.querySelector(".rsvp-btn");
     if (rsvpButton) {
       rsvpButton.addEventListener("click", function () {
-        alert("You RSVP’d to this event!");
+        alert("You RSVP’d to \"" + event.title + "\"!");
       });
     }
 
-    eventsList.appendChild(card);
-  });
-}
+    return card;
+  }
+
+  // Helper: show an error message inside the events container.
+  function showErrorMessage(message) {
+    eventsContainer.innerHTML =
+      "<p class='events-error'>" + message + "</p>";
+  }
+
+  // Step 1: ask the backend for the list of events.
+  fetch(EVENTS_API_URL)
+    .then(function (response) {
+      // Step 2: if the server responded with an error status, throw so the
+      // .catch() block below handles it like any other failure.
+      if (!response.ok) {
+        throw new Error("Request failed with status " + response.status);
+      }
+      return response.json();
+    })
+    .then(function (events) {
+      // Step 3: clear anything currently in the container (just in case)
+      // and add one card per event returned by the API.
+      eventsContainer.innerHTML = "";
+
+      if (!Array.isArray(events) || events.length === 0) {
+        eventsContainer.innerHTML =
+          "<p class='events-empty'>No events to show right now.</p>";
+        return;
+      }
+
+      events.forEach(function (event) {
+        const card = createEventCard(event);
+        eventsContainer.appendChild(card);
+      });
+    })
+    .catch(function (error) {
+      // Step 4: log the technical details for developers, and show a
+      // simple, friendly message to the user.
+      console.error("Failed to load events:", error);
+      showErrorMessage("Could not load events.");
+    });
+});
 
 const loginForm = document.getElementById("login-form");
 const loginEmail = document.getElementById("login-email");
