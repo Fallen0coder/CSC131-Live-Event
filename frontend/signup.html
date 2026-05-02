@@ -14,9 +14,13 @@
         <ul class="nav-links">
           <li><a href="index.html">Home</a></li>
           <li><a href="events.html">Events</a></li>
+          <li><a href="profile.html">Profile</a></li>
           <li><a href="login.html">Login</a></li>
           <li><a href="settings.html">Settings</a></li>
           <li><a href="about.html">About Us</a></li>
+          <li id="nav-logout-li" class="is-hidden">
+            <button type="button" id="nav-logout-btn" class="nav-logout-btn">Log out</button>
+          </li>
         </ul>
       </nav>
     </div>
@@ -24,7 +28,7 @@
 
   <main class="signup-page">
     <div class="container login-page-inner">
-      <form id="signup-form" class="login-card">
+      <form id="signup-form" class="login-card" novalidate>
         <h2>Create an account</h2>
         <p class="login-subtitle">Join Live Event to discover and connect on campus.</p>
 
@@ -36,6 +40,17 @@
             name="fullname"
             placeholder="Alex Johnson"
             autocomplete="name"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="signup-username">Username</label>
+          <input
+            type="text"
+            id="signup-username"
+            name="username"
+            placeholder="alexj"
+            autocomplete="username"
           />
         </div>
 
@@ -75,6 +90,8 @@
         <button type="submit" id="signup-submit-btn" class="login-submit-btn">
           Sign up
         </button>
+
+        <p id="signup-message" class="settings-message" role="status" aria-live="polite"></p>
 
         <p class="login-signup">
           Already have an account?

@@ -1,19 +1,30 @@
-// ---------------------------
-// Theme (works on every page)
-// ---------------------------
-// We keep the theme in localStorage so it persists across refreshes and pages.
+// ===========================================================================
+// Live Event - frontend script
+// ---------------------------------------------------------------------------
+// Beginner-friendly notes:
+// - This file runs on every page (it's loaded by every HTML file).
+// - We use small "if (element)" guards so code that only belongs on one page
+//   (like the signup form code) just does nothing on the other pages.
+// - All user data is stored in localStorage for now (no real backend).
+// ===========================================================================
+
+
+// ===========================================================================
+// 1) THEME (works on every page)
+// ===========================================================================
+// We keep the theme in localStorage so it persists across refreshes/pages.
 // The CSS applies dark mode when <body> has the class "theme-dark".
 const LIVE_EVENT_THEME_KEY = "liveEventTheme";
 
 function getSavedTheme() {
-  // Default to light mode if nothing has been saved yet.
   return localStorage.getItem(LIVE_EVENT_THEME_KEY) || "light";
 }
 
 function applyTheme(theme) {
-  // Defensive check: theme should be "light" or "dark".
   const isDark = theme === "dark";
   document.body.classList.toggle("theme-dark", isDark);
+  // Update the glow indicator on the theme buttons (settings page only).
+  highlightSelectedThemeButton(theme);
 }
 
 function setTheme(theme) {
@@ -25,19 +36,114 @@ function setTheme(theme) {
 function updateThemeStatusText() {
   const status = document.getElementById("theme-status");
   if (!status) return;
-
   const theme = getSavedTheme();
   status.textContent =
-    theme === "dark"
-      ? "Dark mode is enabled."
-      : "Light mode is enabled.";
+    theme === "dark" ? "Dark mode is enabled." : "Light mode is enabled.";
 }
 
-// Apply the saved theme as soon as this script runs.
+// Add the "is-selected" class to whichever theme button matches the current
+// theme. CSS handles the actual glow effect.
+function highlightSelectedThemeButton(theme) {
+  const lightBtn = document.getElementById("theme-light-btn");
+  const darkBtn = document.getElementById("theme-dark-btn");
+  if (lightBtn) lightBtn.classList.toggle("is-selected", theme === "light");
+  if (darkBtn) darkBtn.classList.toggle("is-selected", theme === "dark");
+}
+
+// Apply the saved theme as soon as this script runs (avoids "flash" of wrong theme).
 applyTheme(getSavedTheme());
 
-const browseButton = document.getElementById("browse-btn");
 
+// ===========================================================================
+// 2) ACCESSIBILITY MODES (apply on every page)
+// ===========================================================================
+// Each one toggles a class on <body>. CSS handles the actual visual change.
+const A11Y_REDUCE_MOTION_KEY = "liveEventA11yReduceMotion";
+const A11Y_LARGE_TEXT_KEY = "liveEventA11yLargeText";
+const A11Y_HIGH_CONTRAST_KEY = "liveEventA11yHighContrast";
+
+function applyA11ySettings() {
+  document.body.classList.toggle(
+    "a11y-reduce-motion",
+    localStorage.getItem(A11Y_REDUCE_MOTION_KEY) === "true"
+  );
+  document.body.classList.toggle(
+    "a11y-large-text",
+    localStorage.getItem(A11Y_LARGE_TEXT_KEY) === "true"
+  );
+  document.body.classList.toggle(
+    "a11y-high-contrast",
+    localStorage.getItem(A11Y_HIGH_CONTRAST_KEY) === "true"
+  );
+}
+applyA11ySettings();
+
+
+// ===========================================================================
+// 3) AUTH HELPERS (login state lives in localStorage)
+// ===========================================================================
+const LOGGED_IN_KEY = "isLoggedIn";
+const CURRENT_USER_KEY = "liveEventCurrentUser"; // JSON of the logged-in user
+const USERS_KEY = "liveEventUsers";              // JSON array of all signed-up users
+
+function isLoggedIn() {
+  return localStorage.getItem(LOGGED_IN_KEY) === "true";
+}
+
+function getAllUsers() {
+  try {
+    const raw = localStorage.getItem(USERS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.warn("Could not parse stored users:", e);
+    return [];
+  }
+}
+
+function saveAllUsers(users) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function getCurrentUser() {
+  try {
+    const raw = localStorage.getItem(CURRENT_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function setCurrentUser(user) {
+  localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
+  localStorage.setItem(LOGGED_IN_KEY, "true");
+}
+
+function logout() {
+  localStorage.removeItem(LOGGED_IN_KEY);
+  localStorage.removeItem(CURRENT_USER_KEY);
+  window.location.href = "index.html";
+}
+
+// Show the navbar "Log out" button only when the user is logged in.
+function refreshNavLogoutVisibility() {
+  const li = document.getElementById("nav-logout-li");
+  if (!li) return;
+  li.classList.toggle("is-hidden", !isLoggedIn());
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  refreshNavLogoutVisibility();
+  const navLogoutBtn = document.getElementById("nav-logout-btn");
+  if (navLogoutBtn) {
+    navLogoutBtn.addEventListener("click", logout);
+  }
+});
+
+
+// ===========================================================================
+// 4) HOMEPAGE: hero buttons + featured event filter
+// ===========================================================================
+const browseButton = document.getElementById("browse-btn");
 if (browseButton) {
   browseButton.addEventListener("click", function () {
     window.location.href = "events.html";
@@ -45,10 +151,10 @@ if (browseButton) {
 }
 
 const createAccountBtn = document.getElementById("create-account-btn");
-
 if (createAccountBtn) {
   createAccountBtn.addEventListener("click", function () {
-    window.location.href = "signup.html";
+    // If they're already logged in, send them to their profile instead.
+    window.location.href = isLoggedIn() ? "profile.html" : "signup.html";
   });
 }
 
@@ -111,8 +217,7 @@ function applyFeaturedFilters() {
 
   cards.forEach(function (card) {
     const cardCategory = card.getAttribute("data-category") || "";
-    const matchesCategory =
-      category === "all" || cardCategory === category;
+    const matchesCategory = category === "all" || cardCategory === category;
     const blob = (card.textContent || "").toLowerCase();
     const matchesSearch = query === "" || blob.includes(query);
 
@@ -174,37 +279,27 @@ if (featuredEventsContainer) {
   applyFeaturedFilters();
 }
 
-// ---------------------------
-// Events page: load from backend
-// ---------------------------
-// The events page has a container element with id="events-container".
-// When that page loads, we:
-//   1. Show animated loading "skeleton" cards while the request is in flight.
-//   2. Fetch the list of events from the backend API.
-//   3. Build a real card per event (title, date, time, location, description,
-//      category, RSVP button).
-//   4. Show a friendly error state with a "Try again" button if anything
-//      goes wrong, and log the technical details to the console.
+
+// ===========================================================================
+// 5) EVENTS PAGE: load from backend (unchanged from original)
+// ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
-  // Look for the events container. If it isn't on the page (because the user
-  // is on a different page like Home or Login), we simply do nothing.
   const eventsContainer = document.getElementById("events-container");
   if (!eventsContainer) return;
 
-  // The backend exposes the events list at this URL.
   const EVENTS_API_URL = "http://localhost:3000/api/events";
-  // The backend RSVP endpoint. Each click on a card's RSVP button posts here.
   const RSVP_API_URL = "http://localhost:3000/api/rsvp";
 
-  // Real user sessions aren't fully built yet, so for now we hard-code a
-  // demo user. Once login is wired up end-to-end we can replace this with
-  // the actual logged-in user's id.
-  const userId = 1;
+  // Real user sessions aren't fully built yet. The backend only knows about
+  // its seeded demo users (ids 1 and 2). If the logged-in user matches one
+  // of those, use their id; otherwise fall back to user 1 so the RSVP demo
+  // still works for a freshly-signed-up local account.
+  const currentUser = getCurrentUser();
+  const userId =
+    currentUser && (currentUser.id === 1 || currentUser.id === 2)
+      ? currentUser.id
+      : 1;
 
-  // Helper: escape any characters that have a special meaning in HTML.
-  // We use this for any string that comes from the API before placing it
-  // inside .innerHTML, so a future event title with "<" or "&" can't break
-  // the page.
   function escapeHtml(value) {
     if (value === null || value === undefined) return "";
     return String(value)
@@ -215,9 +310,6 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/'/g, "&#39;");
   }
 
-  // Helper: format a date string from the API ("2026-05-15") into something
-  // a little friendlier for humans ("May 15, 2026"). If parsing fails for
-  // any reason, we just fall back to the original string.
   function formatEventDate(dateString) {
     if (!dateString) return "";
     const parsed = new Date(dateString);
@@ -229,13 +321,8 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Helper: format a time value ("18:30" or "2026-05-15T18:30:00") into
-  // a short human time like "6:30 PM". If parsing fails, return the raw
-  // value so we never lose information.
   function formatEventTime(timeString) {
     if (!timeString) return "";
-
-    // Common short form first: "HH:MM" or "HH:MM:SS".
     const shortMatch = /^(\d{1,2}):(\d{2})/.exec(timeString);
     if (shortMatch) {
       const hour = Number(shortMatch[1]);
@@ -249,8 +336,6 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       }
     }
-
-    // Otherwise try to parse it as a full date-time.
     const parsed = new Date(timeString);
     if (!isNaN(parsed.getTime())) {
       return parsed.toLocaleTimeString(undefined, {
@@ -258,11 +343,9 @@ document.addEventListener("DOMContentLoaded", function () {
         minute: "2-digit"
       });
     }
-
     return timeString;
   }
 
-  // Helper: turn a category code ("tech") into a nicer label ("Tech").
   function formatCategoryLabel(category) {
     if (!category) return "";
     const known = {
@@ -274,45 +357,30 @@ document.addEventListener("DOMContentLoaded", function () {
       sports: "Sports"
     };
     if (known[category]) return known[category];
-    // Fallback: capitalize the first letter so unknown categories still
-    // look tidy in the badge.
     return category.charAt(0).toUpperCase() + category.slice(1);
   }
 
-  // Helper: send an RSVP for the given event to the backend, and update
-  // the button based on the response.
   function sendRsvp(rsvpButton, event) {
-    // Prevent double-clicks while the request is in flight.
     rsvpButton.disabled = true;
     rsvpButton.textContent = "Saving\u2026";
 
     fetch(RSVP_API_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        userId: userId,
-        eventId: event.id
-      })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: userId, eventId: event.id })
     })
       .then(function (response) {
-        // Read the JSON body either way so we can show the backend's
-        // error message when something goes wrong.
         return response.json().then(function (data) {
           return { ok: response.ok, data: data };
         });
       })
       .then(function (result) {
         if (result.ok) {
-          // Success: update the button so the user sees their RSVP stuck.
           rsvpButton.textContent = "RSVP\u2019d";
           rsvpButton.disabled = true;
           rsvpButton.classList.add("is-rsvped");
           alert("You RSVP\u2019d to this event!");
         } else {
-          // Server rejected the RSVP (e.g. unknown user/event). Show its
-          // message and re-enable the button so the user can try again.
           const message =
             (result.data && result.data.error) ||
             "Could not RSVP. Please try again.";
@@ -322,7 +390,6 @@ document.addEventListener("DOMContentLoaded", function () {
         }
       })
       .catch(function (error) {
-        // Network failure (server down, no internet, etc.).
         console.error("RSVP request failed:", error);
         alert("Could not reach the server. Please try again later.");
         rsvpButton.disabled = false;
@@ -330,11 +397,6 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   }
 
-  // Helper: build one event card element from an event object.
-  // The card supports title, date, time, location, description, category
-  // and an RSVP button. Any field that the backend doesn't send yet is
-  // simply skipped, so the same card works for both today's data and the
-  // richer data coming later.
   function createEventCard(event) {
     const card = document.createElement("article");
     card.className = "event-card";
@@ -346,8 +408,6 @@ document.addEventListener("DOMContentLoaded", function () {
     const safeDescription = escapeHtml(event.description);
     const categoryLabel = escapeHtml(formatCategoryLabel(event.category));
 
-    // Build the inner HTML piece by piece. Optional fields are only
-    // included if the backend actually returned them.
     let html = "<div class='event-card-header'>";
     html += "<h3>" + safeTitle + "</h3>";
     if (categoryLabel) {
@@ -384,26 +444,18 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
-
     card.innerHTML = html;
 
-    // Wire the RSVP button up to the backend.
     const rsvpButton = card.querySelector(".rsvp-btn");
     if (rsvpButton) {
       rsvpButton.addEventListener("click", function (clickEvent) {
-        // Stop any default behavior just in case (e.g. if a future
-        // version puts this button inside a form).
         clickEvent.preventDefault();
         sendRsvp(rsvpButton, event);
       });
     }
-
     return card;
   }
 
-  // Helper: show animated "skeleton" placeholder cards while we wait for
-  // the API. They share the .events-grid layout so the page doesn't jump
-  // when the real cards arrive.
   function showLoadingState() {
     const SKELETON_COUNT = 3;
     let html = "";
@@ -422,21 +474,17 @@ document.addEventListener("DOMContentLoaded", function () {
       "<p class='events-loading-text' role='status'>Loading events\u2026</p>" + html;
   }
 
-  // Helper: show a "no events yet" empty state.
   function showEmptyState() {
     eventsContainer.innerHTML =
       "<div class='events-state'>" +
         "<div class='events-state-icon' aria-hidden='true'>\uD83D\uDCC5</div>" +
         "<h3 class='events-state-title'>No events yet</h3>" +
         "<p class='events-state-message'>" +
-          "There aren\u2019t any upcoming events right now. " +
-          "Check back soon!" +
+          "There aren\u2019t any upcoming events right now. Check back soon!" +
         "</p>" +
       "</div>";
   }
 
-  // Helper: show a friendly error state with a "Try again" button that
-  // re-runs the fetch when clicked.
   function showErrorState() {
     eventsContainer.innerHTML =
       "<div class='events-state is-error'>" +
@@ -457,269 +505,545 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // The main loader. Pulled out into a function so the "Try again" button
-  // can call it without duplicating logic.
   function loadEvents() {
-    // Step 1: show the loading skeletons immediately.
     showLoadingState();
-
-    // Step 2: ask the backend for the list of events.
     fetch(EVENTS_API_URL)
       .then(function (response) {
-        // If the server responded with an error status, throw so the
-        // .catch() block below handles it like any other failure.
         if (!response.ok) {
           throw new Error("Request failed with status " + response.status);
         }
         return response.json();
       })
       .then(function (events) {
-        // Step 3: replace the loading skeletons with real cards.
         eventsContainer.innerHTML = "";
-
         if (!Array.isArray(events) || events.length === 0) {
           showEmptyState();
           return;
         }
-
         events.forEach(function (event) {
           const card = createEventCard(event);
           eventsContainer.appendChild(card);
         });
       })
       .catch(function (error) {
-        // Step 4: log the technical details for developers, and show a
-        // simple, friendly state to the user with a retry button.
         console.error("Failed to load events:", error);
         showErrorState();
       });
   }
 
-  // Kick everything off.
   loadEvents();
 });
 
-// ---------------------------
-// Login page: send credentials to backend
-// ---------------------------
-// When the user submits the login form, we POST their email and password
-// to the backend. If the backend confirms the credentials, we send the
-// user to the events page; otherwise we show whatever error message the
-// backend returned.
+
+// ===========================================================================
+// 6) LOGIN PAGE  (demo, localStorage-based)
+// ---------------------------------------------------------------------------
+// We try to match against an account that was created via the signup form.
+// For convenience we also accept the two seeded backend demo users
+// (alice@example.com / bob@example.com with password "password123") so the
+// login flow works even before the user signs up.
+// ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
-  // Find the login form and inputs. If we're not on the login page, stop.
   const loginForm = document.getElementById("login-form");
   const loginEmail = document.getElementById("login-email");
   const loginPassword = document.getElementById("login-password");
+  const loginMessage = document.getElementById("login-message");
+  if (!loginForm || !loginEmail || !loginPassword) return;
 
-  if (!loginForm || !loginEmail || !loginPassword) {
-    return;
+  function showMsg(text, type) {
+    if (!loginMessage) {
+      alert(text);
+      return;
+    }
+    loginMessage.textContent = text;
+    loginMessage.classList.remove("is-success", "is-error");
+    if (type) loginMessage.classList.add("is-" + type);
   }
 
-  // The backend login endpoint.
-  const LOGIN_API_URL = "http://localhost:3000/api/login";
+  // Fallback "seed" accounts so demo login works without signing up first.
+  const DEMO_ACCOUNTS = [
+    {
+      id: 1,
+      fullName: "Alice Demo",
+      username: "alice",
+      email: "alice@example.com",
+      password: "password123"
+    },
+    {
+      id: 2,
+      fullName: "Bob Demo",
+      username: "bob",
+      email: "bob@example.com",
+      password: "password123"
+    }
+  ];
 
   loginForm.addEventListener("submit", function (event) {
-    // Stop the browser from doing the default form submit (which reloads).
     event.preventDefault();
 
-    // Step 1: read what the user typed.
-    const email = loginEmail.value.trim();
+    const email = loginEmail.value.trim().toLowerCase();
     const password = loginPassword.value;
 
-    // Step 2: simple client-side check before hitting the network.
     if (email === "" || password === "") {
-      alert("Please fill all fields");
+      showMsg("Please fill in both email and password.", "error");
       return;
     }
 
-    // Step 3: send the credentials to the backend as JSON.
-    // The backend expects: { email, password }
-    fetch(LOGIN_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        email: email,
-        password: password
-      })
-    })
-      .then(function (response) {
-        // Read the JSON body whether the request succeeded or failed,
-        // so we can show the backend's error message when needed.
-        return response.json().then(function (data) {
-          return { ok: response.ok, data: data };
-        });
-      })
-      .then(function (result) {
-        if (result.ok) {
-          // Step 4a: success. Remember a simple "logged in" flag and
-          // send the user to the events page.
-          localStorage.setItem("liveEventLoggedIn", "true");
-          alert("Login successful");
-          window.location.href = "events.html";
-        } else {
-          // Step 4b: the server rejected the login (e.g. wrong password).
-          // Show its message to the user.
-          const message =
-            (result.data && result.data.error) ||
-            "Login failed. Please try again.";
-          alert(message);
-        }
-      })
-      .catch(function (error) {
-        // Step 5: network failure (server down, no internet, etc.).
-        console.error("Login request failed:", error);
-        alert("Could not reach the server. Please try again later.");
+    // 1) Look for a user we already created via signup.
+    const allUsers = getAllUsers();
+    let matched = allUsers.find(function (u) {
+      return u.email && u.email.toLowerCase() === email && u.password === password;
+    });
+
+    // 2) Fall back to demo accounts.
+    if (!matched) {
+      matched = DEMO_ACCOUNTS.find(function (u) {
+        return u.email.toLowerCase() === email && u.password === password;
       });
+    }
+
+    if (!matched) {
+      showMsg("Invalid email or password.", "error");
+      return;
+    }
+
+    // Success: remember the user and head to their profile.
+    setCurrentUser({
+      id: matched.id,
+      fullName: matched.fullName,
+      username: matched.username,
+      email: matched.email
+    });
+
+    showMsg("Login successful! Redirecting…", "success");
+    setTimeout(function () {
+      window.location.href = "profile.html";
+    }, 400);
   });
 });
 
-// ---------------------------
-// Signup page: send new account to backend
-// ---------------------------
-// When the user submits the signup form, we send their info to the backend
-// API instead of just pretending it worked. The backend will create the
-// account (or return an error like "email already registered") and we react
-// based on the response.
+
+// ===========================================================================
+// 7) SIGNUP PAGE  (demo, localStorage-based)
+// ---------------------------------------------------------------------------
+// Saves the new user into the "liveEventUsers" array, simulates a login,
+// and redirects to the profile page so the user can fill in details/hobbies.
+// ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
-  // Find the signup form and its input fields. If the form isn't on this
-  // page (because the user is on Home, Events, etc.), we just stop here.
   const signupForm = document.getElementById("signup-form");
-  const signupFullname = document.getElementById("signup-fullname");
-  const signupEmailField = document.getElementById("signup-email");
-  const signupPasswordField = document.getElementById("signup-password");
-  const signupConfirmField = document.getElementById("signup-confirm");
+  const fullNameInput = document.getElementById("signup-fullname");
+  const usernameInput = document.getElementById("signup-username");
+  const emailInput = document.getElementById("signup-email");
+  const passwordInput = document.getElementById("signup-password");
+  const confirmInput = document.getElementById("signup-confirm");
+  const signupMessage = document.getElementById("signup-message");
 
   if (
     !signupForm ||
-    !signupFullname ||
-    !signupEmailField ||
-    !signupPasswordField ||
-    !signupConfirmField
+    !fullNameInput ||
+    !usernameInput ||
+    !emailInput ||
+    !passwordInput ||
+    !confirmInput
   ) {
     return;
   }
 
-  // The backend signup endpoint.
-  const SIGNUP_API_URL = "http://localhost:3000/api/signup";
+  function showMsg(text, type) {
+    if (!signupMessage) {
+      alert(text);
+      return;
+    }
+    signupMessage.textContent = text;
+    signupMessage.classList.remove("is-success", "is-error");
+    if (type) signupMessage.classList.add("is-" + type);
+  }
 
   signupForm.addEventListener("submit", function (event) {
-    // Stop the browser from doing its default form submit (which would
-    // reload the page).
     event.preventDefault();
 
-    // Step 1: read the values the user typed in.
-    const fullName = signupFullname.value.trim();
-    const email = signupEmailField.value.trim();
-    const password = signupPasswordField.value;
-    const confirmPassword = signupConfirmField.value;
+    const fullName = fullNameInput.value.trim();
+    const username = usernameInput.value.trim();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+    const confirmPassword = confirmInput.value;
 
-    // Step 2: simple client-side checks before we even hit the network.
     if (
       fullName === "" ||
+      username === "" ||
       email === "" ||
       password === "" ||
       confirmPassword === ""
     ) {
-      alert("Please fill all fields");
+      showMsg("Please fill in every field.", "error");
+      return;
+    }
+
+    if (password.length < 6) {
+      showMsg("Password should be at least 6 characters.", "error");
       return;
     }
 
     if (password !== confirmPassword) {
-      alert("Passwords do not match");
+      showMsg("Passwords do not match.", "error");
       return;
     }
 
-    // Step 3: send the data to the backend as JSON.
-    // The backend expects: { name, email, password }
-    fetch(SIGNUP_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        name: fullName,
-        email: email,
-        password: password
-      })
-    })
-      .then(function (response) {
-        // Try to read the JSON body either way (success or error) so we
-        // can show the backend's error message when something goes wrong.
-        return response.json().then(function (data) {
-          return { ok: response.ok, data: data };
-        });
-      })
-      .then(function (result) {
-        if (result.ok) {
-          // Step 4a: success path. Tell the user and send them to login.
-          alert("Account created successfully");
-          window.location.href = "login.html";
-        } else {
-          // Step 4b: the server responded but rejected the signup
-          // (e.g. duplicate email or missing fields). Show its message.
-          const message =
-            (result.data && result.data.error) ||
-            "Sign up failed. Please try again.";
-          alert(message);
-        }
-      })
-      .catch(function (error) {
-        // Step 5: network failure (server down, no internet, etc.).
-        console.error("Signup request failed:", error);
-        alert("Could not reach the server. Please try again later.");
-      });
+    // Make sure the email/username isn't already taken in localStorage.
+    const allUsers = getAllUsers();
+    const emailTaken = allUsers.some(function (u) {
+      return u.email && u.email.toLowerCase() === email.toLowerCase();
+    });
+    if (emailTaken) {
+      showMsg("That email is already registered. Try logging in.", "error");
+      return;
+    }
+    const usernameTaken = allUsers.some(function (u) {
+      return u.username && u.username.toLowerCase() === username.toLowerCase();
+    });
+    if (usernameTaken) {
+      showMsg("That username is taken. Pick another.", "error");
+      return;
+    }
+
+    // Build the new user object. We give them an id that won't collide
+    // with the demo seed users (1, 2).
+    const newUser = {
+      id: Date.now(),
+      fullName: fullName,
+      username: username,
+      email: email,
+      password: password,
+      createdAt: new Date().toISOString()
+    };
+
+    allUsers.push(newUser);
+    saveAllUsers(allUsers);
+
+    // Pre-fill the profile so the user sees their info on profile.html.
+    const initialProfile = {
+      fullName: fullName,
+      username: username,
+      email: email,
+      school: "",
+      location: "",
+      bio: "",
+      hobbies: []
+    };
+    localStorage.setItem("liveEventProfile", JSON.stringify(initialProfile));
+
+    // Simulate login and head to the profile page.
+    setCurrentUser({
+      id: newUser.id,
+      fullName: newUser.fullName,
+      username: newUser.username,
+      email: newUser.email
+    });
+
+    showMsg("Account created! Redirecting to your profile…", "success");
+    setTimeout(function () {
+      window.location.href = "profile.html";
+    }, 500);
   });
 });
 
-const profileForm = document.getElementById("profile-form");
-const profileFullName = document.getElementById("profile-fullname");
-const profileBio = document.getElementById("profile-bio");
-const profileInterests = document.getElementById("profile-interests");
-const profileSchool = document.getElementById("profile-school");
-const profileLocation = document.getElementById("profile-location");
 
-if (
-  profileForm &&
-  profileFullName &&
-  profileBio &&
-  profileInterests &&
-  profileSchool &&
-  profileLocation
-) {
-  profileForm.addEventListener("submit", function (e) {
-    e.preventDefault();
+// ===========================================================================
+// 8) PROFILE PAGE
+// ---------------------------------------------------------------------------
+// - Loads profile data from localStorage on page load.
+// - Renders the read-only "display" view by default.
+// - "Edit profile" swaps to inputs (CSS handles the visual swap via the
+//   body.is-editing-profile class).
+// - "Save profile" persists to localStorage and re-renders the display.
+// - Hobby chips are rendered from a static list of 100+ options. The user
+//   can pick up to 8.
+// ===========================================================================
+const HOBBIES_LIST = [
+  "Basketball","Soccer","Football","Baseball","Volleyball","Tennis","Running",
+  "Gym","Yoga","Hiking","Camping","Skateboarding","Biking","Swimming",
+  "Rock Music","Rap","Hip-Hop","R&B","Pop","Country","Jazz","EDM","Concerts",
+  "Festivals","Karaoke","Dancing","DJ Sets","Guitar","Piano","Drums","Singing",
+  "Anime","Gaming","Board Games","Chess","Movies","Horror","Comedy","Action",
+  "Documentaries","Netflix","YouTube","TikTok","Photography","Videography",
+  "Editing","Drawing","Painting","Digital Art","Fashion","Sneakers","Makeup",
+  "Hair Styling","Thrifting","Cooking","Baking","Sushi","Pizza","Tacos",
+  "Coffee","Boba","Burgers","BBQ","Vegan Food","Spicy Food","Desserts",
+  "Reading","Writing","Coding","AI","Business","Marketing","Finance",
+  "Investing","Entrepreneurship","Volunteering","Student Clubs","Networking",
+  "Career Events","Study Groups","Museums","Art Shows","Theater",
+  "Stand-up Comedy","Cars","Travel","Road Trips","Beach","Picnics","Dogs",
+  "Cats","Gardening","Meditation","Astrology","Podcasts","Fitness Classes",
+  "Parties","Campus Events","Food Trucks","Arcades","Bowling","Escape Rooms",
+  "Trivia"
+];
+const MAX_HOBBIES = 8;
+const PROFILE_KEY = "liveEventProfile";
 
-    const fullName = profileFullName.value.trim();
-    const bio = profileBio.value.trim();
-    const interests = profileInterests.value.trim();
-    const school = profileSchool.value.trim();
-    const location = profileLocation.value.trim();
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(PROFILE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.warn("Could not parse stored profile:", e);
+  }
+  // Fall back to the logged-in user's basics if no profile saved yet.
+  const user = getCurrentUser();
+  return {
+    fullName: (user && user.fullName) || "",
+    username: (user && user.username) || "",
+    email: (user && user.email) || "",
+    school: "",
+    location: "",
+    bio: "",
+    hobbies: []
+  };
+}
 
-    if (
-      fullName === "" ||
-      bio === "" ||
-      interests === "" ||
-      school === "" ||
-      location === ""
-    ) {
-      alert("Please fill all fields");
+function saveProfile(profile) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const profileMain = document.querySelector(".profile-main");
+  if (!profileMain) return; // Not on the profile page.
+
+  const editBtn = document.getElementById("profile-edit-btn");
+  const saveBtn = document.getElementById("profile-save-btn");
+  const cancelBtn = document.getElementById("profile-cancel-btn");
+  const messageEl = document.getElementById("profile-message");
+
+  // Edit-mode inputs
+  const inFullName = document.getElementById("profile-fullname");
+  const inUsername = document.getElementById("profile-username");
+  const inEmail = document.getElementById("profile-email");
+  const inSchool = document.getElementById("profile-school");
+  const inLocation = document.getElementById("profile-location");
+  const inBio = document.getElementById("profile-bio");
+
+  // Display elements
+  const displayFullName = document.getElementById("display-fullname");
+  const displayFullName2 = document.getElementById("display-fullname-2");
+  const displayUsername = document.getElementById("display-username");
+  const displayUsername2 = document.getElementById("display-username-2");
+  const displayEmail = document.getElementById("display-email");
+  const displaySchool = document.getElementById("display-school");
+  const displaySchoolMeta = document.getElementById("display-school-meta");
+  const displayLocation = document.getElementById("display-location");
+  const displayLocationMeta = document.getElementById("display-location-meta");
+  const displayBio = document.getElementById("display-bio");
+  const displayHobbies = document.getElementById("display-hobbies");
+  const displayHobbiesEmpty = document.getElementById("display-hobbies-empty");
+  const avatarEl = document.getElementById("profile-avatar");
+
+  // Hobby chip selector
+  const hobbyGrid = document.getElementById("hobby-grid");
+  const hobbyCounter = document.getElementById("hobby-counter");
+
+  // We keep a working copy of the selected hobbies while in edit mode so
+  // "Cancel" can throw away unsaved changes.
+  let workingHobbies = [];
+
+  function setMessage(text, type) {
+    if (!messageEl) return;
+    messageEl.textContent = text || "";
+    messageEl.classList.remove("is-success", "is-error");
+    if (type) messageEl.classList.add("is-" + type);
+  }
+
+  function setText(el, value, fallback) {
+    if (!el) return;
+    if (value && String(value).trim() !== "") {
+      el.textContent = value;
+      el.classList.remove("is-empty");
+    } else {
+      el.textContent = fallback;
+      el.classList.add("is-empty");
+    }
+  }
+
+  function renderDisplay(profile) {
+    setText(displayFullName, profile.fullName, "Your Name");
+    setText(displayFullName2, profile.fullName, "Not set");
+    const usernameStr = profile.username ? "@" + profile.username : "@username";
+    setText(displayUsername, usernameStr, "@username");
+    setText(
+      displayUsername2,
+      profile.username ? "@" + profile.username : "",
+      "Not set"
+    );
+    setText(displayEmail, profile.email, "Not set");
+    setText(displaySchool, profile.school, "Not set");
+    setText(displayLocation, profile.location, "Not set");
+    setText(displaySchoolMeta, profile.school, "School not set");
+    setText(displayLocationMeta, profile.location, "Location not set");
+    setText(displayBio, profile.bio, "Tell others a little about yourself.");
+
+    // Avatar = first letter of full name (or "U")
+    if (avatarEl) {
+      const initial =
+        (profile.fullName || profile.username || "U").trim().charAt(0) || "U";
+      avatarEl.textContent = initial.toUpperCase();
+    }
+
+    // Render hobby pills
+    if (displayHobbies) {
+      displayHobbies.innerHTML = "";
+      const hobbies = Array.isArray(profile.hobbies) ? profile.hobbies : [];
+      if (hobbies.length === 0) {
+        if (displayHobbiesEmpty) displayHobbiesEmpty.classList.remove("is-hidden");
+      } else {
+        if (displayHobbiesEmpty) displayHobbiesEmpty.classList.add("is-hidden");
+        hobbies.forEach(function (name) {
+          const span = document.createElement("span");
+          span.className = "hobby-pill";
+          span.textContent = name;
+          displayHobbies.appendChild(span);
+        });
+      }
+    }
+
+    // Honor the "show hobbies" privacy toggle (from settings).
+    const showHobbies = localStorage.getItem("liveEventPrivacyShowHobbies");
+    const hobbiesCard = displayHobbies && displayHobbies.closest(".profile-card-block");
+    if (hobbiesCard && showHobbies === "false") {
+      hobbiesCard.style.display = "none";
+    }
+  }
+
+  function fillEditInputs(profile) {
+    if (inFullName) inFullName.value = profile.fullName || "";
+    if (inUsername) inUsername.value = profile.username || "";
+    if (inEmail) inEmail.value = profile.email || "";
+    if (inSchool) inSchool.value = profile.school || "";
+    if (inLocation) inLocation.value = profile.location || "";
+    if (inBio) inBio.value = profile.bio || "";
+
+    workingHobbies = Array.isArray(profile.hobbies) ? profile.hobbies.slice() : [];
+    renderHobbyChips();
+  }
+
+  function renderHobbyChips() {
+    if (!hobbyGrid) return;
+    hobbyGrid.innerHTML = "";
+
+    HOBBIES_LIST.forEach(function (hobby) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "hobby-chip";
+      btn.textContent = hobby;
+      btn.setAttribute("data-hobby", hobby);
+
+      const isSelected = workingHobbies.indexOf(hobby) !== -1;
+      if (isSelected) btn.classList.add("is-selected");
+
+      // Visually disable unselected chips when we're at the cap.
+      if (!isSelected && workingHobbies.length >= MAX_HOBBIES) {
+        btn.classList.add("is-disabled");
+      }
+
+      btn.addEventListener("click", function () {
+        toggleHobby(hobby);
+      });
+
+      hobbyGrid.appendChild(btn);
+    });
+
+    updateHobbyCounter();
+  }
+
+  function toggleHobby(hobby) {
+    const idx = workingHobbies.indexOf(hobby);
+    if (idx !== -1) {
+      // Always allow deselect.
+      workingHobbies.splice(idx, 1);
+    } else {
+      // Block selecting more than the max.
+      if (workingHobbies.length >= MAX_HOBBIES) {
+        setMessage(
+          "You can only pick " + MAX_HOBBIES + " hobbies. Deselect one first.",
+          "error"
+        );
+        return;
+      }
+      workingHobbies.push(hobby);
+      setMessage("", "");
+    }
+    renderHobbyChips();
+  }
+
+  function updateHobbyCounter() {
+    if (!hobbyCounter) return;
+    hobbyCounter.textContent = workingHobbies.length + "/" + MAX_HOBBIES + " selected";
+    hobbyCounter.classList.toggle("is-full", workingHobbies.length >= MAX_HOBBIES);
+  }
+
+  function enterEditMode() {
+    document.body.classList.add("is-editing-profile");
+    fillEditInputs(loadProfile());
+    setMessage("", "");
+  }
+
+  function exitEditMode() {
+    document.body.classList.remove("is-editing-profile");
+  }
+
+  function handleSave() {
+    const profile = {
+      fullName: (inFullName && inFullName.value.trim()) || "",
+      username: (inUsername && inUsername.value.trim()) || "",
+      email: (inEmail && inEmail.value.trim()) || "",
+      school: (inSchool && inSchool.value.trim()) || "",
+      location: (inLocation && inLocation.value.trim()) || "",
+      bio: (inBio && inBio.value.trim()) || "",
+      hobbies: workingHobbies.slice()
+    };
+
+    if (profile.fullName === "" || profile.username === "") {
+      setMessage("Full name and username are required.", "error");
       return;
     }
 
-    alert("Profile saved (demo)");
-    localStorage.setItem("liveEventProfileReady", "true");
-    window.location.href = "events.html";
-  });
-}
+    saveProfile(profile);
 
-// ---------------------------
-// Settings page interactions
-// ---------------------------
+    // Also keep the "current user" header info in sync.
+    const current = getCurrentUser();
+    if (current) {
+      current.fullName = profile.fullName;
+      current.username = profile.username;
+      current.email = profile.email;
+      setCurrentUser(current);
+    }
 
-// Appearance buttons
+    renderDisplay(profile);
+    exitEditMode();
+    setMessage("Profile saved.", "success");
+  }
+
+  // Wire up the buttons.
+  if (editBtn) editBtn.addEventListener("click", enterEditMode);
+  if (saveBtn) saveBtn.addEventListener("click", handleSave);
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", function () {
+      exitEditMode();
+      setMessage("", "");
+    });
+  }
+
+  // Initial render.
+  const initial = loadProfile();
+  renderDisplay(initial);
+  // Pre-populate the edit inputs too so opening "Edit" feels instant.
+  fillEditInputs(initial);
+});
+
+
+// ===========================================================================
+// 9) SETTINGS PAGE
+// ---------------------------------------------------------------------------
+// All toggles persist to localStorage. Theme buttons highlight whichever
+// theme is currently active.
+// ===========================================================================
 const themeLightBtn = document.getElementById("theme-light-btn");
 const themeDarkBtn = document.getElementById("theme-dark-btn");
 
@@ -728,18 +1052,19 @@ if (themeLightBtn) {
     setTheme("light");
   });
 }
-
 if (themeDarkBtn) {
   themeDarkBtn.addEventListener("click", function () {
     setTheme("dark");
   });
 }
 
-// If we're on the settings page, show the initial theme status text.
+// Make sure the buttons reflect the saved theme on page load.
+highlightSelectedThemeButton(getSavedTheme());
 updateThemeStatusText();
 
-// Helper to load/save a checkbox toggle using localStorage.
-function bindToggleToLocalStorage(elementId, storageKey, defaultValue) {
+// Helper: load/save a checkbox toggle using localStorage.
+// `onChange` is an optional callback that runs after we save the new value.
+function bindToggleToLocalStorage(elementId, storageKey, defaultValue, onChange) {
   const toggle = document.getElementById(elementId);
   if (!toggle) return;
 
@@ -752,29 +1077,31 @@ function bindToggleToLocalStorage(elementId, storageKey, defaultValue) {
 
   toggle.addEventListener("change", function () {
     localStorage.setItem(storageKey, String(toggle.checked));
+    if (typeof onChange === "function") onChange(toggle.checked);
   });
 }
 
-// Notifications
+// Notifications (the original three + the three new ones)
 bindToggleToLocalStorage("notif-email", "liveEventNotifEmail", true);
 bindToggleToLocalStorage("notif-reminders", "liveEventNotifReminders", true);
-bindToggleToLocalStorage("notif-campus", "liveEventNotifCampusUpdates", false);
+bindToggleToLocalStorage("notif-friend-invites", "liveEventNotifFriendInvites", true);
+bindToggleToLocalStorage("notif-rsvp-updates", "liveEventNotifRsvpUpdates", true);
+bindToggleToLocalStorage("notif-nearby", "liveEventNotifNearby", false);
 
 // Privacy
 bindToggleToLocalStorage("privacy-public-profile", "liveEventPrivacyPublicProfile", true);
-bindToggleToLocalStorage("privacy-show-interests", "liveEventPrivacyShowInterests", true);
+bindToggleToLocalStorage("privacy-show-hobbies", "liveEventPrivacyShowHobbies", true);
+bindToggleToLocalStorage("privacy-show-attended", "liveEventPrivacyShowAttended", true);
+bindToggleToLocalStorage("privacy-allow-messages", "liveEventPrivacyAllowMessages", true);
 
-// Apply the "Show interests" privacy setting on the profile page.
-// This is still a demo, but it demonstrates how a setting can affect other pages.
-const showInterestsSetting = localStorage.getItem("liveEventPrivacyShowInterests");
-const profileInterestsField = document.getElementById("profile-interests");
-if (profileInterestsField && showInterestsSetting === "false") {
-  // Hide the entire field row if the user chose not to show interests.
-  const wrapper = profileInterestsField.closest(".form-field");
-  if (wrapper) wrapper.style.display = "none";
-}
+// Accessibility — we re-apply the body classes whenever they change so the
+// effect is visible immediately.
+bindToggleToLocalStorage("a11y-reduce-motion", A11Y_REDUCE_MOTION_KEY, false, applyA11ySettings);
+bindToggleToLocalStorage("a11y-large-text", A11Y_LARGE_TEXT_KEY, false, applyA11ySettings);
+bindToggleToLocalStorage("a11y-high-contrast", A11Y_HIGH_CONTRAST_KEY, false, applyA11ySettings);
 
-// Password reset / change (demo)
+
+// ——— Password reset / change (demo) ———
 const passwordForm = document.getElementById("password-form");
 const currentPasswordInput = document.getElementById("current-password");
 const newPasswordInput = document.getElementById("new-password");
@@ -798,7 +1125,6 @@ if (
 ) {
   passwordForm.addEventListener("submit", function (e) {
     e.preventDefault();
-
     const currentPassword = currentPasswordInput.value.trim();
     const newPassword = newPasswordInput.value;
     const confirmPassword = confirmPasswordInput.value;
@@ -807,19 +1133,102 @@ if (
       showSettingsMessage(passwordMessage, "Please fill all password fields.", "error");
       return;
     }
-
+    if (newPassword.length < 6) {
+      showSettingsMessage(passwordMessage, "New password should be at least 6 characters.", "error");
+      return;
+    }
     if (newPassword !== confirmPassword) {
       showSettingsMessage(passwordMessage, "New password and confirmation do not match.", "error");
       return;
     }
 
-    // Demo success: in a real app, you'd send this to a backend.
+    // Demo: update the password on the currently-logged-in user (if any).
+    const current = getCurrentUser();
+    if (current) {
+      const allUsers = getAllUsers();
+      const idx = allUsers.findIndex(function (u) { return u.id === current.id; });
+      if (idx !== -1) {
+        if (allUsers[idx].password !== currentPassword) {
+          showSettingsMessage(passwordMessage, "Current password is incorrect.", "error");
+          return;
+        }
+        allUsers[idx].password = newPassword;
+        saveAllUsers(allUsers);
+      }
+    }
+
     showSettingsMessage(passwordMessage, "Password updated successfully (demo).", "success");
     passwordForm.reset();
   });
 }
 
-// Danger zone: delete account (simulated)
+
+// ——— Account tools: clear preferences + download user data ———
+const clearPrefsBtn = document.getElementById("clear-prefs-btn");
+const downloadDataBtn = document.getElementById("download-data-btn");
+const toolsMessage = document.getElementById("tools-message");
+
+// Keys related to user preferences (NOT login or profile data).
+const PREFERENCE_KEYS = [
+  LIVE_EVENT_THEME_KEY,
+  "liveEventNotifEmail",
+  "liveEventNotifReminders",
+  "liveEventNotifFriendInvites",
+  "liveEventNotifRsvpUpdates",
+  "liveEventNotifNearby",
+  "liveEventPrivacyPublicProfile",
+  "liveEventPrivacyShowHobbies",
+  "liveEventPrivacyShowAttended",
+  "liveEventPrivacyAllowMessages",
+  A11Y_REDUCE_MOTION_KEY,
+  A11Y_LARGE_TEXT_KEY,
+  A11Y_HIGH_CONTRAST_KEY
+];
+
+if (clearPrefsBtn && toolsMessage) {
+  clearPrefsBtn.addEventListener("click", function () {
+    const ok = confirm(
+      "Reset theme, notifications, privacy, and accessibility settings to their defaults?"
+    );
+    if (!ok) return;
+    PREFERENCE_KEYS.forEach(function (key) {
+      localStorage.removeItem(key);
+    });
+    // Re-apply defaults visually.
+    applyTheme(getSavedTheme());
+    applyA11ySettings();
+    showSettingsMessage(toolsMessage, "Preferences cleared. Reload to update toggles.", "success");
+  });
+}
+
+if (downloadDataBtn && toolsMessage) {
+  downloadDataBtn.addEventListener("click", function () {
+    // Bundle every Live Event-related localStorage entry into one JSON file.
+    const data = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      data[key] = localStorage.getItem(key);
+    }
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "live-event-data.json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showSettingsMessage(toolsMessage, "Your data was downloaded as JSON.", "success");
+  });
+}
+
+
+// ——— Danger zone: delete account (simulated) ———
 const deleteAccountBtn = document.getElementById("delete-account-btn");
 const deleteMessage = document.getElementById("delete-message");
 
@@ -828,27 +1237,29 @@ if (deleteAccountBtn && deleteMessage) {
     const confirmed = confirm(
       "Are you sure you want to delete your account? This is a demo and will only clear localStorage values."
     );
-
     if (!confirmed) return;
 
-    // Clear demo "account" and settings data.
-    const keysToRemove = [
-      "liveEventLoggedIn",
-      "liveEventProfileReady",
-      LIVE_EVENT_THEME_KEY,
-      "liveEventNotifEmail",
-      "liveEventNotifReminders",
-      "liveEventNotifCampusUpdates",
-      "liveEventPrivacyPublicProfile",
-      "liveEventPrivacyShowInterests"
-    ];
+    // Remove the currently-logged-in user from the saved users list.
+    const current = getCurrentUser();
+    if (current) {
+      const remaining = getAllUsers().filter(function (u) { return u.id !== current.id; });
+      saveAllUsers(remaining);
+    }
 
+    // Clear demo "account" + settings + profile data.
+    const keysToRemove = PREFERENCE_KEYS.concat([
+      LOGGED_IN_KEY,
+      CURRENT_USER_KEY,
+      PROFILE_KEY,
+      "liveEventProfileReady" // legacy key from the old profile flow
+    ]);
     keysToRemove.forEach(function (key) {
       localStorage.removeItem(key);
     });
 
-    // After clearing, fall back to light mode visually.
     applyTheme(getSavedTheme());
+    applyA11ySettings();
+    refreshNavLogoutVisibility();
 
     showSettingsMessage(
       deleteMessage,

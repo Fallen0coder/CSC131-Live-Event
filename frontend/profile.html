@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live Event - Set Up Your Profile</title>
+  <title>Live Event - Profile</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -18,72 +18,185 @@
           <li><a href="login.html">Login</a></li>
           <li><a href="settings.html">Settings</a></li>
           <li><a href="about.html">About Us</a></li>
+          <!-- The logout button is shown by JS only when the user is logged in -->
+          <li id="nav-logout-li" class="is-hidden">
+            <button type="button" id="nav-logout-btn" class="nav-logout-btn">Log out</button>
+          </li>
         </ul>
       </nav>
     </div>
   </header>
 
-  <main class="profile-page">
-    <div class="container login-page-inner">
-      <form id="profile-form" class="login-card profile-card">
-        <h2>Set Up Your Profile</h2>
-        <p class="login-subtitle">Tell others a little about yourself.</p>
+  <main class="profile-main">
+    <div class="container profile-layout">
 
-        <div class="form-field">
-          <label for="profile-fullname">Full Name</label>
-          <input
-            type="text"
-            id="profile-fullname"
-            name="full-name"
-            placeholder="Alex Johnson"
-            autocomplete="name"
-          />
+      <!-- Header card: avatar + name + edit button -->
+      <section class="profile-header-card" aria-label="Profile header">
+        <div class="profile-avatar" id="profile-avatar" aria-hidden="true">U</div>
+
+        <div class="profile-name-block">
+          <p class="profile-display-name" id="display-fullname">Your Name</p>
+          <p class="profile-display-username" id="display-username">@username</p>
+          <p class="profile-display-meta">
+            <span id="display-school-meta">School not set</span>
+            <span aria-hidden="true"> · </span>
+            <span id="display-location-meta">Location not set</span>
+          </p>
         </div>
 
-        <div class="form-field">
-          <label for="profile-bio">Bio</label>
-          <textarea
-            id="profile-bio"
-            name="bio"
-            rows="4"
-            placeholder="I enjoy music events, coding meetups, and outdoor activities."
-          ></textarea>
+        <div class="profile-header-actions">
+          <button type="button" id="profile-edit-btn" class="btn btn-secondary">Edit profile</button>
+          <button type="button" id="profile-save-btn" class="btn btn-primary profile-edit-only">
+            Save profile
+          </button>
+          <button type="button" id="profile-cancel-btn" class="btn btn-secondary profile-edit-only">
+            Cancel
+          </button>
+        </div>
+      </section>
+
+      <!-- Status message after save -->
+      <p id="profile-message" class="settings-message" role="status" aria-live="polite"></p>
+
+      <!-- Personal info card -->
+      <section class="profile-card-block" aria-labelledby="info-heading">
+        <h3 id="info-heading">Personal info</h3>
+
+        <!-- DISPLAY MODE -->
+        <div class="profile-display-only field-grid">
+          <div class="profile-display-row">
+            <span class="profile-display-label">Full name</span>
+            <span class="profile-display-value" id="display-fullname-2">—</span>
+          </div>
+          <div class="profile-display-row">
+            <span class="profile-display-label">Username</span>
+            <span class="profile-display-value" id="display-username-2">—</span>
+          </div>
+          <div class="profile-display-row">
+            <span class="profile-display-label">Email</span>
+            <span class="profile-display-value" id="display-email">—</span>
+          </div>
+          <div class="profile-display-row">
+            <span class="profile-display-label">School</span>
+            <span class="profile-display-value" id="display-school">—</span>
+          </div>
+          <div class="profile-display-row">
+            <span class="profile-display-label">Location</span>
+            <span class="profile-display-value" id="display-location">—</span>
+          </div>
         </div>
 
-        <div class="form-field">
-          <label for="profile-interests">Interests</label>
-          <input
-            type="text"
-            id="profile-interests"
-            name="interests"
-            placeholder="Music, Tech, Sports"
-          />
+        <!-- EDIT MODE -->
+        <div class="profile-edit-only">
+          <div class="field-grid">
+            <div class="form-field">
+              <label for="profile-fullname">Full name</label>
+              <input type="text" id="profile-fullname" placeholder="Alex Johnson" autocomplete="name" />
+            </div>
+            <div class="form-field">
+              <label for="profile-username">Username</label>
+              <input type="text" id="profile-username" placeholder="alexj" autocomplete="username" />
+            </div>
+            <div class="form-field">
+              <label for="profile-email">Email</label>
+              <input type="email" id="profile-email" placeholder="you@example.edu" autocomplete="email" />
+            </div>
+            <div class="form-field">
+              <label for="profile-school">School</label>
+              <input type="text" id="profile-school" placeholder="California State University, Sacramento" />
+            </div>
+            <div class="form-field">
+              <label for="profile-location">Location</label>
+              <input type="text" id="profile-location" placeholder="Sacramento, CA" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- About me card -->
+      <section class="profile-card-block" aria-labelledby="about-heading">
+        <h3 id="about-heading">About me</h3>
+        <div class="profile-display-only">
+          <p id="display-bio" class="profile-about-text is-empty">
+            Tell others a little about yourself.
+          </p>
+        </div>
+        <div class="profile-edit-only">
+          <div class="form-field" style="margin-bottom:0;">
+            <label class="visually-hidden" for="profile-bio">Bio</label>
+            <textarea
+              id="profile-bio"
+              rows="4"
+              placeholder="I enjoy live music, weekend hikes, and coding meetups."
+            ></textarea>
+          </div>
+        </div>
+      </section>
+
+      <!-- Hobbies & interests card -->
+      <section class="profile-card-block" aria-labelledby="hobbies-heading">
+        <h3 id="hobbies-heading">Hobbies &amp; interests</h3>
+
+        <!-- DISPLAY MODE: chips of selected hobbies -->
+        <div class="profile-display-only">
+          <div id="display-hobbies"></div>
+          <p id="display-hobbies-empty" class="profile-display-value is-empty is-hidden">
+            No hobbies selected yet — click "Edit profile" to pick some.
+          </p>
         </div>
 
-        <div class="form-field">
-          <label for="profile-school">School</label>
-          <input
-            type="text"
-            id="profile-school"
-            name="school"
-            placeholder="California State University, Sacramento"
-          />
+        <!-- EDIT MODE: scrollable chip selector -->
+        <div class="profile-edit-only">
+          <div class="hobby-header">
+            <p class="hobby-helper">Pick up to 8 things you're into.</p>
+            <span id="hobby-counter" class="hobby-counter">0/8 selected</span>
+          </div>
+          <div id="hobby-grid" class="hobby-scroll" role="group" aria-label="Hobby choices"></div>
         </div>
+      </section>
 
-        <div class="form-field">
-          <label for="profile-location">Location</label>
-          <input
-            type="text"
-            id="profile-location"
-            name="location"
-            placeholder="Sacramento, CA"
-          />
+      <!-- Saved events placeholder -->
+      <section class="profile-card-block" aria-labelledby="saved-heading">
+        <h3 id="saved-heading">Saved events</h3>
+        <div class="event-placeholder-list">
+          <div class="event-placeholder-item">
+            <span class="event-placeholder-icon" aria-hidden="true">★</span>
+            <div>
+              <p class="event-placeholder-title">Night Market &amp; Live DJs</p>
+              <p class="event-placeholder-meta">Sat, May 3 · Student Union Plaza</p>
+            </div>
+          </div>
+          <div class="event-placeholder-item">
+            <span class="event-placeholder-icon" aria-hidden="true">★</span>
+            <div>
+              <p class="event-placeholder-title">48-Hour Build Sprint</p>
+              <p class="event-placeholder-meta">Fri, May 9 · Innovation Studio</p>
+            </div>
+          </div>
         </div>
+      </section>
 
-        <button type="submit" id="profile-save-btn" class="login-submit-btn">
-          Save Profile
-        </button>
-      </form>
+      <!-- Attended events placeholder -->
+      <section class="profile-card-block" aria-labelledby="attended-heading">
+        <h3 id="attended-heading">Events you've attended</h3>
+        <div class="event-placeholder-list">
+          <div class="event-placeholder-item">
+            <span class="event-placeholder-icon" aria-hidden="true">✓</span>
+            <div>
+              <p class="event-placeholder-title">Spring Welcome Mixer</p>
+              <p class="event-placeholder-meta">Jan 24 · Library Atrium</p>
+            </div>
+          </div>
+          <div class="event-placeholder-item">
+            <span class="event-placeholder-icon" aria-hidden="true">✓</span>
+            <div>
+              <p class="event-placeholder-title">Career Coffee Chats</p>
+              <p class="event-placeholder-meta">Feb 11 · The Commons</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </div>
   </main>
 

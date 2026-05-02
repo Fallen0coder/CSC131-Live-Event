@@ -107,57 +107,42 @@ body {
   padding: clamp(2.5rem, 6vw, 5rem) 0;
 }
 
+/* ——— Hero background image (homepage hero only) ———
+   The .hero-bg div fills the .hero--home section. We layer:
+   1) the party photo (cover, centered, no-repeat) underneath
+   2) a dark gradient overlay so white text stays readable
+   The overlay is applied with linear-gradient over background-image so
+   we don't need an extra DOM element. */
 .hero-bg {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    135deg,
-    #e8efff 0%,
-    #f0f4fa 45%,
-    #e0e7ff 100%
-  );
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0.55)),
+    url("images/party-bg.jpg");
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
   z-index: 0;
 }
 
-.hero-bg::before,
-.hero-bg::after {
-  content: "";
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(60px);
-  opacity: 0.55;
-}
-
-.hero-bg::before {
-  width: min(420px, 70vw);
-  height: min(420px, 70vw);
-  background: #93c5fd;
-  top: -12%;
-  right: -8%;
-}
-
-.hero-bg::after {
-  width: min(360px, 60vw);
-  height: min(360px, 60vw);
-  background: #c4b5fd;
-  bottom: -15%;
-  left: -10%;
-}
-
+/* Make sure the hero text/buttons sit ABOVE the background image */
 .hero-inner {
   position: relative;
   z-index: 1;
 }
 
+/* The hero card now needs to read on top of the photo, so it's a soft
+   translucent dark glass instead of bright white. */
 .hero-content--large {
   max-width: 720px;
   margin: 0 auto;
-  background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: var(--radius-xl);
   padding: clamp(2rem, 5vw, 3.25rem) clamp(1.5rem, 4vw, 2.75rem);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(10px);
+  color: #ffffff;
 }
 
 .hero-eyebrow {
@@ -166,8 +151,8 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--color-primary-dark);
-  background: var(--color-primary-soft);
+  color: #ffffff;
+  background: rgba(37, 99, 235, 0.65);
   padding: 0.35rem 0.75rem;
   border-radius: 999px;
   margin-bottom: 1.25rem;
@@ -179,14 +164,16 @@ body {
   letter-spacing: -0.03em;
   line-height: 1.15;
   margin-bottom: 1rem;
-  color: var(--color-text);
+  color: #ffffff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
 
 .hero-lead {
-  color: var(--color-muted);
+  color: rgba(255, 255, 255, 0.92);
   font-size: clamp(1rem, 2.2vw, 1.15rem);
   max-width: 34rem;
   margin: 0 auto 1.75rem;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
 }
 
 .hero-actions {
@@ -1206,14 +1193,17 @@ body.theme-dark .settings-card-danger .settings-card-header {
   border-bottom-color: rgba(239, 68, 68, 0.24);
 }
 
-/* Homepage polish in dark mode */
+/* Homepage polish in dark mode — keep the photo, just darken the overlay
+   a bit more so the white hero text pops even harder on dark backdrops. */
 body.theme-dark .hero-bg {
-  background: linear-gradient(135deg, #0b1220 0%, #0f172a 52%, #111b33 100%);
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+    url("images/party-bg.jpg");
 }
 
 body.theme-dark .hero-content--large {
-  background: rgba(15, 23, 42, 0.78);
-  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.25);
 }
 
 body.theme-dark .site-footer {
@@ -1365,5 +1355,455 @@ body.theme-dark .skeleton-line {
 @media (max-width: 520px) {
   .creator-card {
     padding: 1.05rem;
+  }
+}
+
+/* ===========================================================================
+   THEME PICKER (Settings page)
+   - Two big buttons (Light / Dark)
+   - The currently-selected one gets a glowing ring so it's obvious
+   =========================================================================== */
+.theme-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.theme-option {
+  flex: 1 1 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.95rem 1.1rem;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.theme-option:hover {
+  transform: translateY(-1px);
+  border-color: var(--color-primary);
+}
+
+/* The "selected" theme button glows so users can see which one is active */
+.theme-option.is-selected {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.18),
+    0 0 18px rgba(37, 99, 235, 0.55);
+}
+
+body.theme-dark .theme-option.is-selected {
+  color: #ffffff;
+  background: rgba(59, 130, 246, 0.22);
+  box-shadow:
+    0 0 0 3px rgba(59, 130, 246, 0.28),
+    0 0 22px rgba(59, 130, 246, 0.7);
+}
+
+/* ===========================================================================
+   PROFILE PAGE
+   =========================================================================== */
+.profile-main {
+  padding: clamp(2rem, 4vw, 3rem) 0 clamp(3rem, 5vw, 4rem);
+}
+
+.profile-layout {
+  display: grid;
+  gap: 1.25rem;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* ——— Header card (avatar + name) ——— */
+.profile-header-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.profile-avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--color-primary), #6366f1);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  flex: 0 0 auto;
+}
+
+.profile-name-block {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.profile-display-name {
+  font-size: 1.45rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.15rem;
+}
+
+.profile-display-username {
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.profile-display-meta {
+  margin-top: 0.4rem;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.profile-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+
+/* ——— Generic profile card ——— */
+.profile-card-block {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.25rem 1.35rem;
+}
+
+.profile-card-block h3 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.85rem;
+}
+
+.profile-card-block .field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+/* Read-only display rows */
+.profile-display-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.profile-display-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+}
+
+.profile-display-value {
+  font-size: 1rem;
+  color: var(--color-text);
+  word-wrap: break-word;
+}
+
+.profile-display-value.is-empty {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+/* "About me" body text */
+.profile-about-text {
+  color: var(--color-text);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.profile-about-text.is-empty {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+/* Saved/Attended events placeholder lists */
+.event-placeholder-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.event-placeholder-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 0.95rem;
+  border-radius: var(--radius-md);
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+}
+
+.event-placeholder-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  font-size: 1rem;
+  flex: 0 0 auto;
+}
+
+.event-placeholder-title {
+  font-weight: 700;
+}
+
+.event-placeholder-meta {
+  margin-top: 0.1rem;
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+/* The chip "pill" used to display selected hobbies on the profile */
+.hobby-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.25rem 0.3rem 0 0;
+}
+
+body.theme-dark .hobby-pill {
+  background: rgba(59, 130, 246, 0.22);
+  color: #c7d2fe;
+}
+
+/* ===========================================================================
+   HOBBY CHIP SELECTOR
+   - Scrollable container so 100+ chips don't push the page down
+   - Chip buttons with selected/unselected states
+   - Counter shown above the grid
+   =========================================================================== */
+.hobby-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.hobby-helper {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+}
+
+.hobby-counter {
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.hobby-counter.is-full {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+body.theme-dark .hobby-counter {
+  background: rgba(59, 130, 246, 0.22);
+  color: #c7d2fe;
+}
+
+body.theme-dark .hobby-counter.is-full {
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+
+.hobby-scroll {
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 0.85rem;
+  background: rgba(37, 99, 235, 0.04);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.4rem;
+
+  /* Slightly nicer scrollbar where supported */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(37, 99, 235, 0.4) transparent;
+}
+
+.hobby-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.hobby-scroll::-webkit-scrollbar-thumb {
+  background: rgba(37, 99, 235, 0.35);
+  border-radius: 999px;
+}
+
+.hobby-chip {
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease,
+    background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hobby-chip:hover {
+  border-color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.hobby-chip.is-selected {
+  background: linear-gradient(135deg, var(--color-primary), #6366f1);
+  border-color: transparent;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+/* Disabled chips when the user already has 8 selected. We don't actually
+   set the disabled attribute (so the user can still click to deselect),
+   we just make them visually clear that they're maxed out. */
+.hobby-chip.is-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.hobby-chip.is-disabled:hover {
+  transform: none;
+  border-color: var(--color-border);
+}
+
+body.theme-dark .hobby-scroll {
+  background: rgba(59, 130, 246, 0.06);
+}
+
+/* ===========================================================================
+   ACCESSIBILITY MODES (toggled by JS via body classes)
+   - .a11y-reduce-motion : kill animations/transitions
+   - .a11y-large-text    : bumps base font size
+   - .a11y-high-contrast : darker borders, stronger text contrast
+   =========================================================================== */
+body.a11y-reduce-motion *,
+body.a11y-reduce-motion *::before,
+body.a11y-reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+body.a11y-large-text {
+  font-size: 18px;
+}
+
+body.a11y-large-text .hero-title {
+  font-size: clamp(2.4rem, 5.5vw, 3.6rem);
+}
+
+body.a11y-high-contrast {
+  --color-text: #000000;
+  --color-muted: #1f2937;
+  --color-border: #1f2937;
+  --color-primary: #1d4ed8;
+  --color-primary-dark: #1e3a8a;
+}
+
+body.a11y-high-contrast.theme-dark {
+  --color-text: #ffffff;
+  --color-muted: #e5e7eb;
+  --color-border: #f1f5f9;
+}
+
+body.a11y-high-contrast .form-field input,
+body.a11y-high-contrast .form-field textarea {
+  border-width: 2px;
+}
+
+/* ===========================================================================
+   AUTH HELPER LINK ROW (e.g. "Logout" on the navbar)
+   =========================================================================== */
+.nav-logout-btn {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-logout-btn:hover {
+  background-color: rgba(185, 28, 28, 0.08);
+  border-color: rgba(185, 28, 28, 0.4);
+  color: #b91c1c;
+}
+
+body.theme-dark .nav-logout-btn {
+  color: #e5e7eb;
+}
+
+/* ===========================================================================
+   PROFILE EDIT MODE
+   - When in "edit" mode we swap display rows for inputs
+   =========================================================================== */
+.profile-edit-only {
+  display: none;
+}
+
+body.is-editing-profile .profile-edit-only {
+  display: block;
+}
+
+body.is-editing-profile .profile-display-only {
+  display: none;
+}
+
+/* Mobile polish */
+@media (max-width: 600px) {
+  .profile-header-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .profile-header-actions {
+    justify-content: center;
   }
 }
