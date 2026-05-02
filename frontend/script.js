@@ -267,26 +267,82 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 });
 
-const loginForm = document.getElementById("login-form");
-const loginEmail = document.getElementById("login-email");
-const loginPassword = document.getElementById("login-password");
+// ---------------------------
+// Login page: send credentials to backend
+// ---------------------------
+// When the user submits the login form, we POST their email and password
+// to the backend. If the backend confirms the credentials, we send the
+// user to the events page; otherwise we show whatever error message the
+// backend returned.
+document.addEventListener("DOMContentLoaded", function () {
+  // Find the login form and inputs. If we're not on the login page, stop.
+  const loginForm = document.getElementById("login-form");
+  const loginEmail = document.getElementById("login-email");
+  const loginPassword = document.getElementById("login-password");
 
-if (loginForm && loginEmail && loginPassword) {
-  loginForm.addEventListener("submit", function (e) {
-    e.preventDefault();
+  if (!loginForm || !loginEmail || !loginPassword) {
+    return;
+  }
 
+  // The backend login endpoint.
+  const LOGIN_API_URL = "http://localhost:3000/api/login";
+
+  loginForm.addEventListener("submit", function (event) {
+    // Stop the browser from doing the default form submit (which reloads).
+    event.preventDefault();
+
+    // Step 1: read what the user typed.
     const email = loginEmail.value.trim();
     const password = loginPassword.value;
 
+    // Step 2: simple client-side check before hitting the network.
     if (email === "" || password === "") {
       alert("Please fill all fields");
-    } else {
-      alert("Login successful (demo)");
-      localStorage.setItem("liveEventLoggedIn", "true");
-      window.location.href = "events.html";
+      return;
     }
+
+    // Step 3: send the credentials to the backend as JSON.
+    // The backend expects: { email, password }
+    fetch(LOGIN_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        email: email,
+        password: password
+      })
+    })
+      .then(function (response) {
+        // Read the JSON body whether the request succeeded or failed,
+        // so we can show the backend's error message when needed.
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          // Step 4a: success. Remember a simple "logged in" flag and
+          // send the user to the events page.
+          localStorage.setItem("liveEventLoggedIn", "true");
+          alert("Login successful");
+          window.location.href = "events.html";
+        } else {
+          // Step 4b: the server rejected the login (e.g. wrong password).
+          // Show its message to the user.
+          const message =
+            (result.data && result.data.error) ||
+            "Login failed. Please try again.";
+          alert(message);
+        }
+      })
+      .catch(function (error) {
+        // Step 5: network failure (server down, no internet, etc.).
+        console.error("Login request failed:", error);
+        alert("Could not reach the server. Please try again later.");
+      });
   });
-}
+});
 
 // ---------------------------
 // Signup page: send new account to backend
