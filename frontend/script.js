@@ -178,9 +178,13 @@ if (featuredEventsContainer) {
 // Events page: load from backend
 // ---------------------------
 // The events page has a container element with id="events-container".
-// When that page loads, we fetch the list of events from the backend API
-// and build one card per event. If the request fails, we show a friendly
-// error message and log details to the console for debugging.
+// When that page loads, we:
+//   1. Show animated loading "skeleton" cards while the request is in flight.
+//   2. Fetch the list of events from the backend API.
+//   3. Build a real card per event (title, date, time, location, description,
+//      category, RSVP button).
+//   4. Show a friendly error state with a "Try again" button if anything
+//      goes wrong, and log the technical details to the console.
 document.addEventListener("DOMContentLoaded", function () {
   // Look for the events container. If it isn't on the page (because the user
   // is on a different page like Home or Login), we simply do nothing.
@@ -197,10 +201,25 @@ document.addEventListener("DOMContentLoaded", function () {
   // the actual logged-in user's id.
   const userId = 1;
 
+  // Helper: escape any characters that have a special meaning in HTML.
+  // We use this for any string that comes from the API before placing it
+  // inside .innerHTML, so a future event title with "<" or "&" can't break
+  // the page.
+  function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   // Helper: format a date string from the API ("2026-05-15") into something
   // a little friendlier for humans ("May 15, 2026"). If parsing fails for
   // any reason, we just fall back to the original string.
   function formatEventDate(dateString) {
+    if (!dateString) return "";
     const parsed = new Date(dateString);
     if (isNaN(parsed.getTime())) return dateString;
     return parsed.toLocaleDateString(undefined, {
@@ -210,11 +229,62 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  // Helper: format a time value ("18:30" or "2026-05-15T18:30:00") into
+  // a short human time like "6:30 PM". If parsing fails, return the raw
+  // value so we never lose information.
+  function formatEventTime(timeString) {
+    if (!timeString) return "";
+
+    // Common short form first: "HH:MM" or "HH:MM:SS".
+    const shortMatch = /^(\d{1,2}):(\d{2})/.exec(timeString);
+    if (shortMatch) {
+      const hour = Number(shortMatch[1]);
+      const minute = Number(shortMatch[2]);
+      const date = new Date();
+      date.setHours(hour, minute, 0, 0);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString(undefined, {
+          hour: "numeric",
+          minute: "2-digit"
+        });
+      }
+    }
+
+    // Otherwise try to parse it as a full date-time.
+    const parsed = new Date(timeString);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    }
+
+    return timeString;
+  }
+
+  // Helper: turn a category code ("tech") into a nicer label ("Tech").
+  function formatCategoryLabel(category) {
+    if (!category) return "";
+    const known = {
+      social: "Social",
+      tech: "Tech",
+      career: "Career",
+      outdoor: "Outdoor",
+      music: "Music",
+      sports: "Sports"
+    };
+    if (known[category]) return known[category];
+    // Fallback: capitalize the first letter so unknown categories still
+    // look tidy in the badge.
+    return category.charAt(0).toUpperCase() + category.slice(1);
+  }
+
   // Helper: send an RSVP for the given event to the backend, and update
   // the button based on the response.
   function sendRsvp(rsvpButton, event) {
     // Prevent double-clicks while the request is in flight.
     rsvpButton.disabled = true;
+    rsvpButton.textContent = "Saving\u2026";
 
     fetch(RSVP_API_URL, {
       method: "POST",
@@ -238,6 +308,7 @@ document.addEventListener("DOMContentLoaded", function () {
           // Success: update the button so the user sees their RSVP stuck.
           rsvpButton.textContent = "RSVP\u2019d";
           rsvpButton.disabled = true;
+          rsvpButton.classList.add("is-rsvped");
           alert("You RSVP\u2019d to this event!");
         } else {
           // Server rejected the RSVP (e.g. unknown user/event). Show its
@@ -247,6 +318,7 @@ document.addEventListener("DOMContentLoaded", function () {
             "Could not RSVP. Please try again.";
           alert(message);
           rsvpButton.disabled = false;
+          rsvpButton.textContent = "RSVP";
         }
       })
       .catch(function (error) {
@@ -254,21 +326,66 @@ document.addEventListener("DOMContentLoaded", function () {
         console.error("RSVP request failed:", error);
         alert("Could not reach the server. Please try again later.");
         rsvpButton.disabled = false;
+        rsvpButton.textContent = "RSVP";
       });
   }
 
   // Helper: build one event card element from an event object.
+  // The card supports title, date, time, location, description, category
+  // and an RSVP button. Any field that the backend doesn't send yet is
+  // simply skipped, so the same card works for both today's data and the
+  // richer data coming later.
   function createEventCard(event) {
     const card = document.createElement("article");
     card.className = "event-card";
 
-    card.innerHTML =
-      "<h3>" + event.title + "</h3>" +
-      "<p class='event-meta'><strong>Date:</strong> " +
-        formatEventDate(event.date) + "</p>" +
-      "<p class='event-meta'><strong>Location:</strong> " +
-        event.location + "</p>" +
-      "<button class='rsvp-btn' type='button'>RSVP</button>";
+    const safeTitle = escapeHtml(event.title);
+    const formattedDate = escapeHtml(formatEventDate(event.date));
+    const formattedTime = escapeHtml(formatEventTime(event.time));
+    const safeLocation = escapeHtml(event.location);
+    const safeDescription = escapeHtml(event.description);
+    const categoryLabel = escapeHtml(formatCategoryLabel(event.category));
+
+    // Build the inner HTML piece by piece. Optional fields are only
+    // included if the backend actually returned them.
+    let html = "<div class='event-card-header'>";
+    html += "<h3>" + safeTitle + "</h3>";
+    if (categoryLabel) {
+      html += "<span class='event-card-category'>" + categoryLabel + "</span>";
+    }
+    html += "</div>";
+
+    html += "<div class='event-card-meta'>";
+    if (formattedDate) {
+      html +=
+        "<p class='event-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDCC5</span>" +
+          "<span><strong>Date:</strong> " + formattedDate + "</span>" +
+        "</p>";
+    }
+    if (formattedTime) {
+      html +=
+        "<p class='event-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\u23F0</span>" +
+          "<span><strong>Time:</strong> " + formattedTime + "</span>" +
+        "</p>";
+    }
+    if (safeLocation) {
+      html +=
+        "<p class='event-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDCCD</span>" +
+          "<span><strong>Location:</strong> " + safeLocation + "</span>" +
+        "</p>";
+    }
+    html += "</div>";
+
+    if (safeDescription) {
+      html += "<p class='event-description'>" + safeDescription + "</p>";
+    }
+
+    html += "<button class='rsvp-btn' type='button'>RSVP</button>";
+
+    card.innerHTML = html;
 
     // Wire the RSVP button up to the backend.
     const rsvpButton = card.querySelector(".rsvp-btn");
@@ -284,44 +401,102 @@ document.addEventListener("DOMContentLoaded", function () {
     return card;
   }
 
-  // Helper: show an error message inside the events container.
-  function showErrorMessage(message) {
+  // Helper: show animated "skeleton" placeholder cards while we wait for
+  // the API. They share the .events-grid layout so the page doesn't jump
+  // when the real cards arrive.
+  function showLoadingState() {
+    const SKELETON_COUNT = 3;
+    let html = "";
+    for (let i = 0; i < SKELETON_COUNT; i++) {
+      html +=
+        "<div class='event-card skeleton-card' aria-hidden='true'>" +
+          "<div class='skeleton-line title'></div>" +
+          "<div class='skeleton-line short'></div>" +
+          "<div class='skeleton-line short'></div>" +
+          "<div class='skeleton-line long'></div>" +
+          "<div class='skeleton-line long'></div>" +
+          "<div class='skeleton-line button'></div>" +
+        "</div>";
+    }
     eventsContainer.innerHTML =
-      "<p class='events-error'>" + message + "</p>";
+      "<p class='events-loading-text' role='status'>Loading events\u2026</p>" + html;
   }
 
-  // Step 1: ask the backend for the list of events.
-  fetch(EVENTS_API_URL)
-    .then(function (response) {
-      // Step 2: if the server responded with an error status, throw so the
-      // .catch() block below handles it like any other failure.
-      if (!response.ok) {
-        throw new Error("Request failed with status " + response.status);
-      }
-      return response.json();
-    })
-    .then(function (events) {
-      // Step 3: clear anything currently in the container (just in case)
-      // and add one card per event returned by the API.
-      eventsContainer.innerHTML = "";
+  // Helper: show a "no events yet" empty state.
+  function showEmptyState() {
+    eventsContainer.innerHTML =
+      "<div class='events-state'>" +
+        "<div class='events-state-icon' aria-hidden='true'>\uD83D\uDCC5</div>" +
+        "<h3 class='events-state-title'>No events yet</h3>" +
+        "<p class='events-state-message'>" +
+          "There aren\u2019t any upcoming events right now. " +
+          "Check back soon!" +
+        "</p>" +
+      "</div>";
+  }
 
-      if (!Array.isArray(events) || events.length === 0) {
-        eventsContainer.innerHTML =
-          "<p class='events-empty'>No events to show right now.</p>";
-        return;
-      }
+  // Helper: show a friendly error state with a "Try again" button that
+  // re-runs the fetch when clicked.
+  function showErrorState() {
+    eventsContainer.innerHTML =
+      "<div class='events-state is-error'>" +
+        "<div class='events-state-icon' aria-hidden='true'>\u26A0\uFE0F</div>" +
+        "<h3 class='events-state-title'>We couldn\u2019t load events</h3>" +
+        "<p class='events-state-message'>" +
+          "Could not load events. Please make sure the backend server is " +
+          "running, then try again." +
+        "</p>" +
+        "<button type='button' class='events-retry-btn'>Try again</button>" +
+      "</div>";
 
-      events.forEach(function (event) {
-        const card = createEventCard(event);
-        eventsContainer.appendChild(card);
+    const retryButton = eventsContainer.querySelector(".events-retry-btn");
+    if (retryButton) {
+      retryButton.addEventListener("click", function () {
+        loadEvents();
       });
-    })
-    .catch(function (error) {
-      // Step 4: log the technical details for developers, and show a
-      // simple, friendly message to the user.
-      console.error("Failed to load events:", error);
-      showErrorMessage("Could not load events.");
-    });
+    }
+  }
+
+  // The main loader. Pulled out into a function so the "Try again" button
+  // can call it without duplicating logic.
+  function loadEvents() {
+    // Step 1: show the loading skeletons immediately.
+    showLoadingState();
+
+    // Step 2: ask the backend for the list of events.
+    fetch(EVENTS_API_URL)
+      .then(function (response) {
+        // If the server responded with an error status, throw so the
+        // .catch() block below handles it like any other failure.
+        if (!response.ok) {
+          throw new Error("Request failed with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (events) {
+        // Step 3: replace the loading skeletons with real cards.
+        eventsContainer.innerHTML = "";
+
+        if (!Array.isArray(events) || events.length === 0) {
+          showEmptyState();
+          return;
+        }
+
+        events.forEach(function (event) {
+          const card = createEventCard(event);
+          eventsContainer.appendChild(card);
+        });
+      })
+      .catch(function (error) {
+        // Step 4: log the technical details for developers, and show a
+        // simple, friendly state to the user with a retry button.
+        console.error("Failed to load events:", error);
+        showErrorState();
+      });
+  }
+
+  // Kick everything off.
+  loadEvents();
 });
 
 // ---------------------------
