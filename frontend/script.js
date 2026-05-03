@@ -124,18 +124,40 @@ function logout() {
   window.location.href = "index.html";
 }
 
-// Show the navbar "Log out" button only when the user is logged in.
+// Update the navbar so that Profile/Login/Logout match the current login state.
+// - Profile link is only shown when the user is logged in.
+// - Login link is hidden when logged in (they don't need it anymore).
+// - Logout button is shown only when logged in.
+function refreshNavAuthVisibility() {
+  const loggedIn = isLoggedIn();
+
+  const profileLi = document.getElementById("profile-link");
+  if (profileLi) profileLi.classList.toggle("is-hidden", !loggedIn);
+
+  const loginLi = document.getElementById("login-link");
+  if (loginLi) loginLi.classList.toggle("is-hidden", loggedIn);
+
+  const logoutLi = document.getElementById("nav-logout-li");
+  if (logoutLi) logoutLi.classList.toggle("is-hidden", !loggedIn);
+}
+
+// Backwards-compatible alias in case anything else still calls the old name.
 function refreshNavLogoutVisibility() {
-  const li = document.getElementById("nav-logout-li");
-  if (!li) return;
-  li.classList.toggle("is-hidden", !isLoggedIn());
+  refreshNavAuthVisibility();
 }
 
 document.addEventListener("DOMContentLoaded", function () {
-  refreshNavLogoutVisibility();
+  refreshNavAuthVisibility();
   const navLogoutBtn = document.getElementById("nav-logout-btn");
   if (navLogoutBtn) {
     navLogoutBtn.addEventListener("click", logout);
+  }
+});
+
+// Keep nav in sync if another tab logs in/out.
+window.addEventListener("storage", function (event) {
+  if (event.key === LOGGED_IN_KEY) {
+    refreshNavAuthVisibility();
   }
 });
 
