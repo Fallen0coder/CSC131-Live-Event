@@ -139,6 +139,13 @@ function refreshNavAuthVisibility() {
 
   const logoutLi = document.getElementById("nav-logout-li");
   if (logoutLi) logoutLi.classList.toggle("is-hidden", !loggedIn);
+
+  // Homepage: hide the "Create Account" hero button when the user is
+  // already logged in (they don't need to create another account).
+  const createAccountBtn = document.getElementById("create-account-btn");
+  if (createAccountBtn) {
+    createAccountBtn.style.display = loggedIn ? "none" : "";
+  }
 }
 
 // Backwards-compatible alias in case anything else still calls the old name.
