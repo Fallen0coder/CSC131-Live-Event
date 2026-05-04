@@ -124,8 +124,10 @@ function logout() {
   window.location.href = "index.html";
 }
 
-// Update the navbar so that Profile/Login/Logout match the current login state.
+// Update the navbar so that Profile/Friends/Login/Logout match the current
+// login state.
 // - Profile link is only shown when the user is logged in.
+// - Friends link is only shown when the user is logged in.
 // - Login link is hidden when logged in (they don't need it anymore).
 // - Logout button is shown only when logged in.
 function refreshNavAuthVisibility() {
@@ -133,6 +135,9 @@ function refreshNavAuthVisibility() {
 
   const profileLi = document.getElementById("profile-link");
   if (profileLi) profileLi.classList.toggle("is-hidden", !loggedIn);
+
+  const friendsLi = document.getElementById("friends-link");
+  if (friendsLi) friendsLi.classList.toggle("is-hidden", !loggedIn);
 
   const loginLi = document.getElementById("login-link");
   if (loginLi) loginLi.classList.toggle("is-hidden", loggedIn);
@@ -1240,6 +1245,459 @@ document.addEventListener("DOMContentLoaded", function () {
     event.preventDefault();
     performUserSearch();
   });
+});
+
+
+// ===========================================================================
+// 8c) FRIENDS PAGE  (friends.html)
+// ---------------------------------------------------------------------------
+// Loads three lists and lets the user accept/deny incoming friend requests:
+//   1. My friends             →  GET /api/friends/:username
+//   2. Incoming requests      →  GET /api/friends/requests/:username
+//   3. Outgoing requests      →  read from localStorage (key below)
+//
+// Why outgoing comes from localStorage:
+//   The backend only has an endpoint for INCOMING pending requests. To keep
+//   the page working without changing the backend, we mirror outgoing
+//   requests on the client whenever this app sends one. Future code (e.g.
+//   wiring the profile-page "Add Friend" button to the backend) can append
+//   to this same key, and the entries will show up here automatically.
+//   Format:   [{ receiverUsername: "alice", createdAt: "<iso>" }, ...]
+//
+// Auth: only logged-in users can see this page. If they aren't logged in
+// we redirect to login.html before doing anything else.
+// ===========================================================================
+const OUTGOING_FRIEND_REQUESTS_KEY = "liveEventOutgoingFriendRequests";
+
+function getOutgoingFriendRequests() {
+  try {
+    const raw = localStorage.getItem(OUTGOING_FRIEND_REQUESTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (e) {
+    console.warn("Could not parse outgoing friend requests:", e);
+    return [];
+  }
+}
+
+function setOutgoingFriendRequests(list) {
+  localStorage.setItem(
+    OUTGOING_FRIEND_REQUESTS_KEY,
+    JSON.stringify(Array.isArray(list) ? list : [])
+  );
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const friendsPage = document.getElementById("friends-page");
+  if (!friendsPage) return; // Not on the friends page — bail.
+
+  // Auth gate: friends.html is for logged-in users only.
+  if (!isLoggedIn()) {
+    window.location.replace("login.html");
+    return;
+  }
+
+  const currentUser = getCurrentUser();
+  const myUsername =
+    currentUser && currentUser.username ? String(currentUser.username) : "";
+
+  // Defensive fallback: if there's no username on the saved user, send them
+  // to login so they can sign in fresh.
+  if (myUsername.trim() === "") {
+    window.location.replace("login.html");
+    return;
+  }
+
+  const FRIENDS_API_URL = "http://localhost:3000/api/friends";
+  const REQUESTS_API_URL = "http://localhost:3000/api/friends/requests";
+  const ACCEPT_API_URL = "http://localhost:3000/api/friends/accept";
+  const DENY_API_URL = "http://localhost:3000/api/friends/deny";
+
+  const subtitleEl = document.getElementById("friends-subtitle");
+  const pageMessageEl = document.getElementById("friends-page-message");
+  const friendsListEl = document.getElementById("friends-list");
+  const incomingListEl = document.getElementById("incoming-requests");
+  const outgoingListEl = document.getElementById("outgoing-requests");
+
+  if (subtitleEl) {
+    subtitleEl.textContent =
+      "Signed in as @" + myUsername + ".";
+  }
+
+  // -------------------------------------------------------------------------
+  // Small DOM helpers
+  // -------------------------------------------------------------------------
+  function setPageMessage(text, type) {
+    if (!pageMessageEl) return;
+    pageMessageEl.textContent = text || "";
+    pageMessageEl.classList.remove("is-info", "is-error", "is-success");
+    if (type) pageMessageEl.classList.add("is-" + type);
+  }
+
+  function renderEmptyInto(container, text) {
+    container.innerHTML = "";
+    const empty = document.createElement("p");
+    empty.className = "friend-empty";
+    empty.textContent = text;
+    container.appendChild(empty);
+  }
+
+  function renderLoadingInto(container) {
+    container.innerHTML = "";
+    const loading = document.createElement("p");
+    loading.className = "friend-loading";
+    loading.textContent = "Loading\u2026";
+    container.appendChild(loading);
+  }
+
+  function initialFor(profile) {
+    const source =
+      (profile && (profile.displayName || profile.username)) || "U";
+    const ch = String(source).trim().charAt(0);
+    return (ch || "U").toUpperCase();
+  }
+
+  // Build a circular avatar (image if profilePicture is set, else initial).
+  function buildAvatar(profile) {
+    const avatar = document.createElement("div");
+    avatar.className = "user-result-avatar";
+
+    const url =
+      profile && profile.profilePicture
+        ? String(profile.profilePicture).trim()
+        : "";
+
+    if (url) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = "";
+      img.addEventListener("error", function () {
+        avatar.innerHTML = "";
+        avatar.textContent = initialFor(profile);
+      });
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = initialFor(profile);
+    }
+    return avatar;
+  }
+
+  // Build the shared name + handle + bio block used by every card.
+  function buildInfoBlock(profile) {
+    const info = document.createElement("div");
+    info.className = "user-result-info";
+
+    const name = document.createElement("p");
+    name.className = "user-result-name";
+    name.textContent =
+      profile.displayName && String(profile.displayName).trim() !== ""
+        ? profile.displayName
+        : profile.username || "Unknown";
+    info.appendChild(name);
+
+    const handle = document.createElement("p");
+    handle.className = "user-result-handle";
+    handle.textContent = profile.username ? "@" + profile.username : "";
+    info.appendChild(handle);
+
+    if (profile.bio && String(profile.bio).trim() !== "") {
+      const bio = document.createElement("p");
+      bio.className = "user-result-bio";
+      bio.textContent = profile.bio;
+      info.appendChild(bio);
+    }
+
+    return info;
+  }
+
+  // -------------------------------------------------------------------------
+  // 1) MY FRIENDS
+  // -------------------------------------------------------------------------
+  function buildFriendCard(friend) {
+    const card = document.createElement("article");
+    card.className = "user-result-card friend-card";
+    card.appendChild(buildAvatar(friend));
+    card.appendChild(buildInfoBlock(friend));
+    return card;
+  }
+
+  function renderFriends(friends) {
+    if (!Array.isArray(friends) || friends.length === 0) {
+      renderEmptyInto(
+        friendsListEl,
+        "You don't have any friends yet. Try searching on the profile page."
+      );
+      return;
+    }
+    friendsListEl.innerHTML = "";
+    friends.forEach(function (friend) {
+      friendsListEl.appendChild(buildFriendCard(friend));
+    });
+  }
+
+  // After loading the real friends list, drop any localStorage outgoing
+  // entries whose receiver is now a friend (the request was accepted).
+  function cleanUpOutgoingAfterFriendsLoad(friends) {
+    if (!Array.isArray(friends) || friends.length === 0) return;
+    const friendUsernamesLower = friends
+      .map(function (f) {
+        return f && f.username ? String(f.username).toLowerCase() : "";
+      })
+      .filter(Boolean);
+    const before = getOutgoingFriendRequests();
+    const after = before.filter(function (entry) {
+      const lower = String(entry.receiverUsername || "").toLowerCase();
+      return friendUsernamesLower.indexOf(lower) === -1;
+    });
+    if (after.length !== before.length) {
+      setOutgoingFriendRequests(after);
+    }
+  }
+
+  function loadFriends() {
+    renderLoadingInto(friendsListEl);
+    const url = FRIENDS_API_URL + "/" + encodeURIComponent(myUsername);
+
+    fetch(url)
+      .then(function (response) {
+        // 404 just means the user hasn't been created on the backend yet —
+        // treat it as "no friends" rather than a hard error.
+        if (response.status === 404) return [];
+        if (!response.ok) {
+          throw new Error("Request failed with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (friends) {
+        renderFriends(friends);
+        cleanUpOutgoingAfterFriendsLoad(friends);
+        // Re-render outgoing in case we removed accepted entries.
+        renderOutgoing();
+      })
+      .catch(function (error) {
+        console.error("Failed to load friends:", error);
+        renderEmptyInto(
+          friendsListEl,
+          "Could not load your friends. Make sure the backend server is running."
+        );
+      });
+  }
+
+  // -------------------------------------------------------------------------
+  // 2) INCOMING REQUESTS
+  // -------------------------------------------------------------------------
+  function buildIncomingCard(request) {
+    const card = document.createElement("article");
+    card.className = "user-result-card friend-card friend-card--incoming";
+
+    const sender = request.sender || {
+      username: request.senderUsername,
+      displayName: "",
+      profilePicture: "",
+      bio: "",
+    };
+
+    card.appendChild(buildAvatar(sender));
+    card.appendChild(buildInfoBlock(sender));
+
+    const actions = document.createElement("div");
+    actions.className = "user-result-actions friend-actions";
+
+    const acceptBtn = document.createElement("button");
+    acceptBtn.type = "button";
+    acceptBtn.className = "btn btn-primary friend-action-btn friend-accept-btn";
+    acceptBtn.textContent = "Accept";
+    acceptBtn.addEventListener("click", function () {
+      handleRespondToRequest(
+        request.senderUsername,
+        myUsername,
+        "accept",
+        acceptBtn,
+        denyBtn
+      );
+    });
+
+    const denyBtn = document.createElement("button");
+    denyBtn.type = "button";
+    denyBtn.className = "btn btn-secondary friend-action-btn friend-deny-btn";
+    denyBtn.textContent = "Deny";
+    denyBtn.addEventListener("click", function () {
+      handleRespondToRequest(
+        request.senderUsername,
+        myUsername,
+        "deny",
+        acceptBtn,
+        denyBtn
+      );
+    });
+
+    actions.appendChild(acceptBtn);
+    actions.appendChild(denyBtn);
+    card.appendChild(actions);
+
+    return card;
+  }
+
+  function renderIncoming(requests) {
+    if (!Array.isArray(requests) || requests.length === 0) {
+      renderEmptyInto(
+        incomingListEl,
+        "No incoming friend requests right now."
+      );
+      return;
+    }
+    incomingListEl.innerHTML = "";
+    requests.forEach(function (request) {
+      incomingListEl.appendChild(buildIncomingCard(request));
+    });
+  }
+
+  function loadIncomingRequests() {
+    renderLoadingInto(incomingListEl);
+    const url =
+      REQUESTS_API_URL + "/" + encodeURIComponent(myUsername);
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Request failed with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (requests) {
+        renderIncoming(requests);
+      })
+      .catch(function (error) {
+        console.error("Failed to load incoming requests:", error);
+        renderEmptyInto(
+          incomingListEl,
+          "Could not load incoming requests. Make sure the backend server is running."
+        );
+      });
+  }
+
+  // -------------------------------------------------------------------------
+  // Accept / Deny handler — calls the backend, then refreshes the lists.
+  // -------------------------------------------------------------------------
+  function handleRespondToRequest(
+    senderUsername,
+    receiverUsername,
+    action,
+    acceptBtn,
+    denyBtn
+  ) {
+    const url = action === "accept" ? ACCEPT_API_URL : DENY_API_URL;
+
+    if (acceptBtn) acceptBtn.disabled = true;
+    if (denyBtn) denyBtn.disabled = true;
+    setPageMessage(
+      action === "accept"
+        ? "Accepting friend request\u2026"
+        : "Denying friend request\u2026",
+      "info"
+    );
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senderUsername: senderUsername,
+        receiverUsername: receiverUsername,
+      }),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          setPageMessage(
+            action === "accept"
+              ? "Friend request accepted."
+              : "Friend request denied.",
+            "success"
+          );
+          // Reload incoming + (if accepted) friends list.
+          loadIncomingRequests();
+          if (action === "accept") {
+            loadFriends();
+          }
+        } else {
+          const message =
+            (result.data && result.data.error) ||
+            "Could not update the friend request.";
+          setPageMessage(message, "error");
+          if (acceptBtn) acceptBtn.disabled = false;
+          if (denyBtn) denyBtn.disabled = false;
+        }
+      })
+      .catch(function (error) {
+        console.error("Friend request action failed:", error);
+        setPageMessage(
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+        if (acceptBtn) acceptBtn.disabled = false;
+        if (denyBtn) denyBtn.disabled = false;
+      });
+  }
+
+  // -------------------------------------------------------------------------
+  // 3) OUTGOING REQUESTS  (read from localStorage)
+  // -------------------------------------------------------------------------
+  function buildOutgoingCard(entry) {
+    const card = document.createElement("article");
+    card.className = "user-result-card friend-card friend-card--outgoing";
+
+    const profile = {
+      username: entry.receiverUsername || "",
+      displayName: "",
+      profilePicture: "",
+      bio: "",
+    };
+
+    card.appendChild(buildAvatar(profile));
+    card.appendChild(buildInfoBlock(profile));
+
+    const actions = document.createElement("div");
+    actions.className = "user-result-actions friend-actions";
+
+    const pendingBadge = document.createElement("span");
+    pendingBadge.className = "friend-pending-badge";
+    pendingBadge.textContent = "Pending";
+    actions.appendChild(pendingBadge);
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderOutgoing() {
+    const outgoing = getOutgoingFriendRequests();
+    if (!Array.isArray(outgoing) || outgoing.length === 0) {
+      renderEmptyInto(
+        outgoingListEl,
+        "You haven't sent any friend requests yet."
+      );
+      return;
+    }
+    outgoingListEl.innerHTML = "";
+    outgoing.forEach(function (entry) {
+      outgoingListEl.appendChild(buildOutgoingCard(entry));
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Initial load
+  // -------------------------------------------------------------------------
+  loadFriends();
+  loadIncomingRequests();
+  renderOutgoing();
 });
 
 

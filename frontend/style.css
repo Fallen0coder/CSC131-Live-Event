@@ -1972,3 +1972,105 @@ body.is-editing-profile .profile-display-only {
     width: 100%;
   }
 }
+
+
+/* ===========================================================================
+ * FRIENDS PAGE
+ * Reuses .user-result-card / .user-result-avatar / etc. from the user search
+ * card so all "person card" UIs look identical across the site.
+ * ===========================================================================
+ */
+.friends-header h2 {
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.4rem;
+}
+
+.friends-subtitle {
+  color: var(--color-muted);
+  font-size: 0.95rem;
+  margin: 0;
+}
+
+.friends-page-message {
+  margin: 0.6rem 0 0;
+  min-height: 1.2em;
+  font-size: 0.92rem;
+  color: var(--color-muted);
+}
+
+.friends-page-message.is-info {
+  color: var(--color-primary-dark);
+}
+
+.friends-page-message.is-success {
+  color: #15803d;
+}
+
+.friends-page-message.is-error {
+  color: #b91c1c;
+}
+
+.friend-card-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+.friend-loading,
+.friend-empty {
+  text-align: center;
+  color: var(--color-muted);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px dashed var(--color-border);
+  margin: 0;
+  grid-column: 1 / -1;
+}
+
+.friend-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.friend-action-btn {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.8rem;
+}
+
+.friend-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.friend-pending-badge {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+}
+
+@media (max-width: 540px) {
+  .friend-actions {
+    flex: 1 1 100%;
+    justify-content: stretch;
+  }
+
+  .friend-action-btn {
+    flex: 1 1 0;
+  }
+
+  .friend-pending-badge {
+    width: 100%;
+    text-align: center;
+  }
+}

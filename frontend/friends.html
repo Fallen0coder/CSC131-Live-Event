@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Event - Friends</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-content">
+      <h1 class="logo">Live Event</h1>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html">Events</a></li>
+          <li id="profile-link" class="is-hidden"><a href="profile.html">Profile</a></li>
+          <li id="friends-link" class="is-hidden">
+            <a class="active" href="friends.html">Friends</a>
+          </li>
+          <li id="login-link"><a href="login.html">Login</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="about.html">About Us</a></li>
+          <!-- The logout button is shown by JS only when the user is logged in -->
+          <li id="nav-logout-li" class="is-hidden">
+            <button type="button" id="nav-logout-btn" class="nav-logout-btn">Log out</button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="profile-main friends-main" id="friends-page">
+    <div class="container profile-layout">
+
+      <!-- Page intro -->
+      <section class="profile-card-block friends-header" aria-labelledby="friends-heading">
+        <h2 id="friends-heading">Friends</h2>
+        <p id="friends-subtitle" class="friends-subtitle">
+          Manage your connections and friend requests.
+        </p>
+        <p
+          id="friends-page-message"
+          class="friends-page-message"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </section>
+
+      <!-- My Friends -->
+      <section class="profile-card-block" aria-labelledby="friends-list-heading">
+        <h3 id="friends-list-heading">My friends</h3>
+        <div
+          id="friends-list"
+          class="friend-card-list"
+          aria-live="polite"
+        ></div>
+      </section>
+
+      <!-- Incoming friend requests -->
+      <section class="profile-card-block" aria-labelledby="incoming-heading">
+        <h3 id="incoming-heading">Incoming friend requests</h3>
+        <div
+          id="incoming-requests"
+          class="friend-card-list"
+          aria-live="polite"
+        ></div>
+      </section>
+
+      <!-- Outgoing friend requests -->
+      <section class="profile-card-block" aria-labelledby="outgoing-heading">
+        <h3 id="outgoing-heading">Outgoing friend requests</h3>
+        <div
+          id="outgoing-requests"
+          class="friend-card-list"
+          aria-live="polite"
+        ></div>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
