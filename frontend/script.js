@@ -1068,6 +1068,182 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ===========================================================================
+// 8b) PROFILE PAGE: user search ("Find people")
+// ---------------------------------------------------------------------------
+// Lets the user type a username on the profile page and see matching public
+// profiles from the backend (GET /api/users/search?username=...).
+// - Calls the backend with fetch().
+// - Builds result cards safely using textContent (so usernames/bios with
+//   special characters like <, &, etc. can never inject HTML).
+// - Shows "No users found" when the API returns an empty array.
+// - Logs and surfaces a friendly message if the request fails.
+// - The "Add Friend" button is a placeholder for now (no real friend logic
+//   yet — that's a future task).
+// ===========================================================================
+document.addEventListener("DOMContentLoaded", function () {
+  const searchForm = document.getElementById("user-search-form");
+  const searchInput = document.getElementById("user-search-input");
+  const searchButton = document.getElementById("user-search-btn");
+  const resultsContainer = document.getElementById("user-search-results");
+  const messageEl = document.getElementById("user-search-message");
+
+  // No-op on any page that doesn't have the search UI (events, settings, etc.).
+  if (!searchForm || !searchInput || !resultsContainer) return;
+
+  const SEARCH_API_URL = "http://localhost:3000/api/users/search";
+
+  function setSearchMessage(text, type) {
+    if (!messageEl) return;
+    messageEl.textContent = text || "";
+    messageEl.classList.remove("is-info", "is-error");
+    if (type) messageEl.classList.add("is-" + type);
+  }
+
+  function clearResults() {
+    resultsContainer.innerHTML = "";
+  }
+
+  function showEmptyResultsState(text) {
+    clearResults();
+    const empty = document.createElement("p");
+    empty.className = "user-search-empty";
+    empty.textContent = text;
+    resultsContainer.appendChild(empty);
+  }
+
+  function initialFor(user) {
+    const source = user.displayName || user.username || "U";
+    const ch = String(source).trim().charAt(0);
+    return (ch || "U").toUpperCase();
+  }
+
+  function buildAvatar(user) {
+    const avatar = document.createElement("div");
+    avatar.className = "user-result-avatar";
+
+    const url = user.profilePicture && String(user.profilePicture).trim();
+    if (url) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = ""; // Decorative; the name is shown right next to it.
+      // If the image fails to load, fall back to the initial letter.
+      img.addEventListener("error", function () {
+        avatar.innerHTML = "";
+        avatar.textContent = initialFor(user);
+      });
+      avatar.appendChild(img);
+    } else {
+      avatar.textContent = initialFor(user);
+    }
+    return avatar;
+  }
+
+  function buildResultCard(user) {
+    const card = document.createElement("article");
+    card.className = "user-result-card";
+
+    card.appendChild(buildAvatar(user));
+
+    const info = document.createElement("div");
+    info.className = "user-result-info";
+
+    const name = document.createElement("p");
+    name.className = "user-result-name";
+    name.textContent =
+      user.displayName && String(user.displayName).trim() !== ""
+        ? user.displayName
+        : user.username || "Unknown";
+    info.appendChild(name);
+
+    const handle = document.createElement("p");
+    handle.className = "user-result-handle";
+    handle.textContent = user.username ? "@" + user.username : "";
+    info.appendChild(handle);
+
+    if (user.bio && String(user.bio).trim() !== "") {
+      const bio = document.createElement("p");
+      bio.className = "user-result-bio";
+      bio.textContent = user.bio;
+      info.appendChild(bio);
+    }
+
+    card.appendChild(info);
+
+    const actions = document.createElement("div");
+    actions.className = "user-result-actions";
+
+    const addFriendBtn = document.createElement("button");
+    addFriendBtn.type = "button";
+    addFriendBtn.className = "btn btn-primary user-add-friend-btn";
+    addFriendBtn.textContent = "Add Friend";
+    // Placeholder behavior — real friends logic isn't built yet.
+    addFriendBtn.addEventListener("click", function () {
+      addFriendBtn.disabled = true;
+      addFriendBtn.textContent = "Requested";
+    });
+    actions.appendChild(addFriendBtn);
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function renderResults(users) {
+    clearResults();
+    if (!Array.isArray(users) || users.length === 0) {
+      showEmptyResultsState("No users found");
+      return;
+    }
+    users.forEach(function (user) {
+      resultsContainer.appendChild(buildResultCard(user));
+    });
+  }
+
+  function performUserSearch() {
+    const raw = searchInput.value.trim();
+    if (raw === "") {
+      setSearchMessage("Type a username to search.", "info");
+      clearResults();
+      return;
+    }
+
+    setSearchMessage("Searching\u2026", "info");
+    if (searchButton) searchButton.disabled = true;
+
+    const url = SEARCH_API_URL + "?username=" + encodeURIComponent(raw);
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Request failed with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (users) {
+        setSearchMessage("", "");
+        renderResults(users);
+      })
+      .catch(function (error) {
+        console.error("User search failed:", error);
+        setSearchMessage(
+          "Could not search users. Make sure the backend server is running, then try again.",
+          "error"
+        );
+        clearResults();
+      })
+      .finally(function () {
+        if (searchButton) searchButton.disabled = false;
+      });
+  }
+
+  // Submitting the form (Search button OR Enter key) triggers the search.
+  searchForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+    performUserSearch();
+  });
+});
+
+
+// ===========================================================================
 // 9) SETTINGS PAGE
 // ---------------------------------------------------------------------------
 // All toggles persist to localStorage. Theme buttons highlight whichever

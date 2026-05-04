@@ -30,6 +30,54 @@
   <main class="profile-main">
     <div class="container profile-layout">
 
+      <!-- Find people: search Live Event users by username -->
+      <section
+        class="profile-card-block user-search-block"
+        aria-labelledby="user-search-heading"
+      >
+        <h3 id="user-search-heading">Find people</h3>
+        <p class="user-search-helper">
+          Search by username to find other Live Event members.
+        </p>
+
+        <form
+          id="user-search-form"
+          class="user-search-bar"
+          role="search"
+          autocomplete="off"
+        >
+          <label class="visually-hidden" for="user-search-input">
+            Search by username
+          </label>
+          <input
+            type="search"
+            id="user-search-input"
+            class="search-input user-search-input"
+            placeholder="Search by username…"
+          />
+          <button
+            type="submit"
+            id="user-search-btn"
+            class="btn btn-primary user-search-btn"
+          >
+            Search
+          </button>
+        </form>
+
+        <p
+          id="user-search-message"
+          class="user-search-message"
+          role="status"
+          aria-live="polite"
+        ></p>
+
+        <div
+          id="user-search-results"
+          class="user-search-results"
+          aria-live="polite"
+        ></div>
+      </section>
+
       <!-- Header card: avatar + name + edit button -->
       <section class="profile-header-card" aria-label="Profile header">
         <div class="profile-avatar" id="profile-avatar" aria-hidden="true">U</div>

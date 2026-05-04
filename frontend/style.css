@@ -1807,3 +1807,168 @@ body.is-editing-profile .profile-display-only {
     justify-content: center;
   }
 }
+
+
+/* ===========================================================================
+ * USER SEARCH ("Find people" card on the profile page)
+ * Reuses the existing card + button design tokens so it blends in.
+ * ===========================================================================
+ */
+.user-search-helper {
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  margin: -0.25rem 0 0.85rem;
+}
+
+.user-search-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.user-search-input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.user-search-btn {
+  flex: 0 0 auto;
+}
+
+.user-search-message {
+  min-height: 1.2em;
+  margin: 0 0 0.75rem;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+}
+
+.user-search-message.is-info {
+  color: var(--color-primary-dark);
+}
+
+.user-search-message.is-error {
+  color: #b91c1c;
+}
+
+.user-search-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.85rem;
+}
+
+.user-result-card {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.95rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.user-result-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: #c7d2fe;
+}
+
+.user-result-avatar {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 1.1rem;
+  overflow: hidden;
+}
+
+.user-result-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.user-result-info {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.user-result-name {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-text);
+  margin: 0 0 0.1rem;
+  word-break: break-word;
+}
+
+.user-result-handle {
+  color: var(--color-muted);
+  font-size: 0.88rem;
+  margin: 0 0 0.35rem;
+  word-break: break-word;
+}
+
+.user-result-bio {
+  color: var(--color-text);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+  word-break: break-word;
+}
+
+.user-result-actions {
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.user-add-friend-btn {
+  font-size: 0.88rem;
+  padding: 0.45rem 0.9rem;
+}
+
+.user-add-friend-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.user-search-empty {
+  text-align: center;
+  color: var(--color-muted);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px dashed var(--color-border);
+  margin: 0;
+}
+
+@media (max-width: 540px) {
+  .user-search-bar {
+    flex-direction: column;
+  }
+
+  .user-search-btn {
+    width: 100%;
+  }
+
+  .user-result-card {
+    flex-wrap: wrap;
+  }
+
+  .user-result-actions {
+    flex: 1 1 100%;
+    align-self: stretch;
+  }
+
+  .user-add-friend-btn {
+    width: 100%;
+  }
+}
