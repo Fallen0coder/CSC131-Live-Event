@@ -13,6 +13,7 @@ const fs = require("fs");
 const User = require("./models/User");
 const Event = require("./models/Event");
 const RSVP = require("./models/RSVP");
+const FriendRequest = require("./models/FriendRequest");
 
 const app = express();
 const PORT = 3000;
@@ -223,6 +224,323 @@ app.get("/api/users/search", async (req, res) => {
   } catch (err) {
     console.error("GET /api/users/search failed:", err);
     res.status(500).json({ error: "User search failed." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Friend request helpers
+// ---------------------------------------------------------------------------
+// All friend routes work with usernames. To keep checks case-insensitive
+// (so "Alice" == "alice"), we always trim and lowercase before doing any
+// comparison or storing anything in the database.
+
+// Returns a normalized lowercase username, or null if the input is missing
+// or only whitespace.
+function normalizeUsername(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (trimmed === "") return null;
+  return trimmed.toLowerCase();
+}
+
+// Looks up a User document by their lowercased username. Returns null if
+// no such user exists.
+async function findUserByUsername(lowerUsername) {
+  return User.findOne({ usernameLower: lowerUsername });
+}
+
+// Builds the safe public profile payload we return for friend-related routes.
+// Never includes passwords, emails, or other private fields.
+function publicProfile(user) {
+  return {
+    username: user.username,
+    displayName: user.displayName || "",
+    profilePicture: user.profilePicture || "",
+    bio: user.bio || "",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Friend routes
+// ---------------------------------------------------------------------------
+
+// POST /api/friends/request
+// Body: { senderUsername, receiverUsername }
+// Sends a friend request from sender → receiver. Validates that:
+//   - both usernames are provided,
+//   - sender is not the same person as receiver,
+//   - both users exist,
+//   - the two are not already friends,
+//   - there isn't already a pending request from sender → receiver.
+app.post("/api/friends/request", async (req, res) => {
+  try {
+    const sender = normalizeUsername(req.body.senderUsername);
+    const receiver = normalizeUsername(req.body.receiverUsername);
+
+    if (!sender || !receiver) {
+      return res.status(400).json({
+        error: "Please provide senderUsername and receiverUsername.",
+      });
+    }
+
+    if (sender === receiver) {
+      return res
+        .status(400)
+        .json({ error: "You cannot send a friend request to yourself." });
+    }
+
+    // Confirm both users exist before doing anything else.
+    const senderUser = await findUserByUsername(sender);
+    if (!senderUser) {
+      return res.status(404).json({ error: "Sender user not found." });
+    }
+    const receiverUser = await findUserByUsername(receiver);
+    if (!receiverUser) {
+      return res.status(404).json({ error: "Receiver user not found." });
+    }
+
+    // Already friends? (Either side's array is enough — we keep them in
+    // sync inside the accept route.)
+    const alreadyFriends =
+      Array.isArray(senderUser.friends) &&
+      senderUser.friends.includes(receiver);
+    if (alreadyFriends) {
+      return res
+        .status(400)
+        .json({ error: "You are already friends with this user." });
+    }
+
+    // No duplicate pending request from the same sender → receiver pair.
+    const existingPending = await FriendRequest.findOne({
+      senderUsername: sender,
+      receiverUsername: receiver,
+      status: "pending",
+    });
+    if (existingPending) {
+      return res.status(400).json({
+        error: "A pending friend request to this user already exists.",
+      });
+    }
+
+    const created = await FriendRequest.create({
+      senderUsername: sender,
+      receiverUsername: receiver,
+      status: "pending",
+    });
+
+    res.status(201).json({
+      message: "Friend request sent.",
+      request: {
+        id: created.id,
+        senderUsername: created.senderUsername,
+        receiverUsername: created.receiverUsername,
+        status: created.status,
+        createdAt: created.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/friends/request failed:", err);
+    res.status(500).json({ error: "Could not send friend request." });
+  }
+});
+
+// GET /api/friends/requests/:username
+// Returns this user's *pending incoming* friend requests, newest first.
+// Each entry is enriched with the sender's safe public profile fields so
+// the frontend can render a card without making a second request.
+app.get("/api/friends/requests/:username", async (req, res) => {
+  try {
+    const username = normalizeUsername(req.params.username);
+    if (!username) {
+      return res.status(400).json({ error: "Invalid username." });
+    }
+
+    const requests = await FriendRequest.find({
+      receiverUsername: username,
+      status: "pending",
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (requests.length === 0) {
+      return res.json([]);
+    }
+
+    // One round-trip lookup of every sender's public profile.
+    const senderUsernames = requests.map((r) => r.senderUsername);
+    const senders = await User.find({
+      usernameLower: { $in: senderUsernames },
+    })
+      .select("username displayName profilePicture bio usernameLower -_id")
+      .lean();
+
+    // Build a lookup map: lowercased username → safe public profile.
+    const senderMap = new Map();
+    senders.forEach((s) => {
+      senderMap.set(s.usernameLower, {
+        username: s.username,
+        displayName: s.displayName || "",
+        profilePicture: s.profilePicture || "",
+        bio: s.bio || "",
+      });
+    });
+
+    const enriched = requests.map((r) => ({
+      id: r._id.toString(),
+      senderUsername: r.senderUsername,
+      status: r.status,
+      createdAt: r.createdAt,
+      // Public sender info if the user still exists; safe defaults otherwise.
+      sender: senderMap.get(r.senderUsername) || {
+        username: r.senderUsername,
+        displayName: "",
+        profilePicture: "",
+        bio: "",
+      },
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error("GET /api/friends/requests/:username failed:", err);
+    res.status(500).json({ error: "Could not load friend requests." });
+  }
+});
+
+// POST /api/friends/accept
+// Body: { senderUsername, receiverUsername }
+// Marks the matching pending request as "accepted" and adds each user to
+// the other's friends array. Uses $addToSet so the same friend can never
+// be added twice.
+app.post("/api/friends/accept", async (req, res) => {
+  try {
+    const sender = normalizeUsername(req.body.senderUsername);
+    const receiver = normalizeUsername(req.body.receiverUsername);
+
+    if (!sender || !receiver) {
+      return res.status(400).json({
+        error: "Please provide senderUsername and receiverUsername.",
+      });
+    }
+
+    const request = await FriendRequest.findOne({
+      senderUsername: sender,
+      receiverUsername: receiver,
+      status: "pending",
+    });
+    if (!request) {
+      return res
+        .status(404)
+        .json({ error: "No pending friend request found for those users." });
+    }
+
+    request.status = "accepted";
+    await request.save();
+
+    // Make sure both users have each other in their friends list.
+    await Promise.all([
+      User.updateOne(
+        { usernameLower: sender },
+        { $addToSet: { friends: receiver } }
+      ),
+      User.updateOne(
+        { usernameLower: receiver },
+        { $addToSet: { friends: sender } }
+      ),
+    ]);
+
+    res.json({
+      message: "Friend request accepted.",
+      request: {
+        id: request.id,
+        senderUsername: request.senderUsername,
+        receiverUsername: request.receiverUsername,
+        status: request.status,
+        createdAt: request.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/friends/accept failed:", err);
+    res.status(500).json({ error: "Could not accept friend request." });
+  }
+});
+
+// POST /api/friends/deny
+// Body: { senderUsername, receiverUsername }
+// Marks the matching pending request as "denied". Does NOT touch the
+// friends arrays — the two users do not become friends.
+app.post("/api/friends/deny", async (req, res) => {
+  try {
+    const sender = normalizeUsername(req.body.senderUsername);
+    const receiver = normalizeUsername(req.body.receiverUsername);
+
+    if (!sender || !receiver) {
+      return res.status(400).json({
+        error: "Please provide senderUsername and receiverUsername.",
+      });
+    }
+
+    const request = await FriendRequest.findOne({
+      senderUsername: sender,
+      receiverUsername: receiver,
+      status: "pending",
+    });
+    if (!request) {
+      return res
+        .status(404)
+        .json({ error: "No pending friend request found for those users." });
+    }
+
+    request.status = "denied";
+    await request.save();
+
+    res.json({
+      message: "Friend request denied.",
+      request: {
+        id: request.id,
+        senderUsername: request.senderUsername,
+        receiverUsername: request.receiverUsername,
+        status: request.status,
+        createdAt: request.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/friends/deny failed:", err);
+    res.status(500).json({ error: "Could not deny friend request." });
+  }
+});
+
+// GET /api/friends/:username
+// Returns the user's accepted friends as an array of public profile objects
+// (safe to render on the frontend without further fetching). Returns [] if
+// the user has no friends yet, and 404 if the user does not exist.
+app.get("/api/friends/:username", async (req, res) => {
+  try {
+    const username = normalizeUsername(req.params.username);
+    if (!username) {
+      return res.status(400).json({ error: "Invalid username." });
+    }
+
+    const user = await findUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const friendUsernames = Array.isArray(user.friends) ? user.friends : [];
+    if (friendUsernames.length === 0) {
+      return res.json([]);
+    }
+
+    const friends = await User.find({
+      usernameLower: { $in: friendUsernames },
+    })
+      .select("username displayName profilePicture bio -_id")
+      .lean();
+
+    // Map to the safe public shape (in case any extra fields slipped in).
+    res.json(friends.map(publicProfile));
+  } catch (err) {
+    console.error("GET /api/friends/:username failed:", err);
+    res.status(500).json({ error: "Could not load friends." });
   }
 });
 

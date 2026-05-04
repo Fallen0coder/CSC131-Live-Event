@@ -44,6 +44,15 @@ const userSchema = new mongoose.Schema({
   profilePicture: { type: String, default: "" },
   bio: { type: String, default: "", trim: true },
 
+  // Accepted friends. We store the *lowercased* username of each friend
+  // (the same form as `usernameLower`) so case-insensitive checks like
+  // `user.friends.includes(other)` are trivial. The friend routes always
+  // normalize input to lowercase before reading/writing this array.
+  friends: {
+    type: [String],
+    default: [],
+  },
+
   password: { type: String, required: true },
 });
 
