@@ -1082,8 +1082,10 @@ document.addEventListener("DOMContentLoaded", function () {
 //   special characters like <, &, etc. can never inject HTML).
 // - Shows "No users found" when the API returns an empty array.
 // - Logs and surfaces a friendly message if the request fails.
-// - The "Add Friend" button is a placeholder for now (no real friend logic
-//   yet — that's a future task).
+// - The "Add Friend" button POSTs to /api/friends/request to actually
+//   create the request on the backend, and mirrors successful requests
+//   into localStorage (`liveEventOutgoingFriendRequests`) so the Friends
+//   page's Outgoing section picks them up automatically.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const searchForm = document.getElementById("user-search-form");
@@ -1143,6 +1145,173 @@ document.addEventListener("DOMContentLoaded", function () {
     return avatar;
   }
 
+  // -------------------------------------------------------------------------
+  // Friend request helpers
+  // -------------------------------------------------------------------------
+  // Endpoint that creates a new friend request on the backend.
+  const FRIEND_REQUEST_API_URL = "http://localhost:3000/api/friends/request";
+
+  // Returns true if we already sent the given user a request earlier (we
+  // remember outgoing requests in localStorage so the Friends page can show
+  // them in its Outgoing section).
+  function hasOutgoingTo(receiverLower) {
+    if (!receiverLower) return false;
+    return getOutgoingFriendRequests().some(function (entry) {
+      return (
+        String(entry.receiverUsername || "").toLowerCase() === receiverLower
+      );
+    });
+  }
+
+  // Add this receiver to the localStorage outgoing list (case-insensitive,
+  // no duplicates). Safe to call after a successful POST OR after the
+  // backend tells us a request already exists.
+  function rememberOutgoing(receiverUsername) {
+    const lower = String(receiverUsername || "").toLowerCase();
+    if (!lower) return;
+    const list = getOutgoingFriendRequests();
+    const exists = list.some(function (entry) {
+      return String(entry.receiverUsername || "").toLowerCase() === lower;
+    });
+    if (!exists) {
+      list.push({
+        receiverUsername: lower,
+        createdAt: new Date().toISOString(),
+      });
+      setOutgoingFriendRequests(list);
+    }
+  }
+
+  // Click handler for the "Add Friend" button on a search result card.
+  // Sends POST /api/friends/request and updates the button + message based
+  // on what the backend says.
+  function sendFriendRequest(user, button) {
+    const me = getCurrentUser();
+    const senderUsername =
+      me && me.username ? String(me.username).trim() : "";
+    const receiverUsername =
+      user && user.username ? String(user.username).trim() : "";
+
+    // Must be logged in to send requests.
+    if (senderUsername === "") {
+      setSearchMessage(
+        "Please log in to send friend requests.",
+        "error"
+      );
+      return;
+    }
+
+    // Defensive: receiver must have a username.
+    if (receiverUsername === "") {
+      setSearchMessage(
+        "This user has no username — can't send a request.",
+        "error"
+      );
+      return;
+    }
+
+    // Friendly self-request guard so we don't even hit the backend.
+    if (senderUsername.toLowerCase() === receiverUsername.toLowerCase()) {
+      button.disabled = true;
+      button.textContent = "That's you";
+      setSearchMessage(
+        "You can't send a friend request to yourself.",
+        "error"
+      );
+      return;
+    }
+
+    // In-flight UI: show the request is being sent.
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = "Sending\u2026";
+    setSearchMessage("Sending friend request\u2026", "info");
+
+    fetch(FRIEND_REQUEST_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senderUsername: senderUsername,
+        receiverUsername: receiverUsername,
+      }),
+    })
+      .then(function (response) {
+        // Always try to read the JSON body so we can show the server's
+        // exact error message (e.g. "You are already friends...",
+        // "A pending friend request to this user already exists.").
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          // Success → "Request Sent", and remember it locally so the
+          // Friends page's Outgoing section picks it up.
+          button.textContent = "Request Sent";
+          button.disabled = true;
+          setSearchMessage(
+            "Friend request sent to @" + receiverUsername + ".",
+            "success"
+          );
+          rememberOutgoing(receiverUsername);
+          return;
+        }
+
+        // Non-OK response — translate the backend error string into a
+        // friendly button label + message. The strings here match the
+        // ones the backend sends today.
+        const serverError =
+          (result.data && result.data.error) ||
+          "Could not send friend request.";
+        const lower = serverError.toLowerCase();
+
+        if (lower.indexOf("yourself") !== -1) {
+          button.textContent = "That's you";
+          button.disabled = true;
+          setSearchMessage(
+            "You can't send a friend request to yourself.",
+            "error"
+          );
+        } else if (lower.indexOf("already friends") !== -1) {
+          button.textContent = "Already friends";
+          button.disabled = true;
+          setSearchMessage(
+            "You're already friends with @" + receiverUsername + ".",
+            "info"
+          );
+        } else if (lower.indexOf("pending friend request") !== -1) {
+          button.textContent = "Request Sent";
+          button.disabled = true;
+          setSearchMessage(
+            "You've already sent @" + receiverUsername + " a friend request.",
+            "info"
+          );
+          // Keep our local mirror in sync with the backend.
+          rememberOutgoing(receiverUsername);
+        } else {
+          // Unknown error — restore the button so the user can retry,
+          // and surface the server's message verbatim.
+          button.disabled = false;
+          button.textContent = originalText;
+          setSearchMessage(serverError, "error");
+        }
+      })
+      .catch(function (error) {
+        console.error("POST /api/friends/request failed:", error);
+        button.disabled = false;
+        button.textContent = originalText;
+        setSearchMessage(
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+      });
+  }
+
   function buildResultCard(user) {
     const card = document.createElement("article");
     card.className = "user-result-card";
@@ -1181,10 +1350,26 @@ document.addEventListener("DOMContentLoaded", function () {
     addFriendBtn.type = "button";
     addFriendBtn.className = "btn btn-primary user-add-friend-btn";
     addFriendBtn.textContent = "Add Friend";
-    // Placeholder behavior — real friends logic isn't built yet.
-    addFriendBtn.addEventListener("click", function () {
+
+    // Pre-flight UI hints so the user doesn't have to click to find out:
+    //   1. If the result IS the logged-in user, label it "That's you".
+    //   2. If we already sent this user a request earlier in the session
+    //      (cached in localStorage), label it "Request Sent".
+    const receiverLower = (user.username || "").toLowerCase();
+    const me = getCurrentUser();
+    const myUsernameLower =
+      me && me.username ? String(me.username).toLowerCase() : "";
+
+    if (receiverLower && myUsernameLower && receiverLower === myUsernameLower) {
       addFriendBtn.disabled = true;
-      addFriendBtn.textContent = "Requested";
+      addFriendBtn.textContent = "That's you";
+    } else if (receiverLower && hasOutgoingTo(receiverLower)) {
+      addFriendBtn.disabled = true;
+      addFriendBtn.textContent = "Request Sent";
+    }
+
+    addFriendBtn.addEventListener("click", function () {
+      sendFriendRequest(user, addFriendBtn);
     });
     actions.appendChild(addFriendBtn);
 
