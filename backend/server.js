@@ -109,42 +109,120 @@ app.get("/api/events", async (req, res) => {
 });
 
 // POST /api/signup
-// Registers a new user. Expects JSON body: { name, email, password }.
-// Hashes the password with bcrypt and rejects duplicate emails.
+// Registers a new user. Expects JSON body: { name, username, email, password }.
+// - Hashes the password with bcrypt.
+// - Rejects duplicate emails (409).
+// - Rejects duplicate usernames, case-insensitively (400 "Username is already taken.").
+// - Trims the username before saving and stores a normalized lowercase copy
+//   (handled inside the User model).
 app.post("/api/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, username, email, password } = req.body;
 
-    if (!name || !email || !password) {
-      return res
-        .status(400)
-        .json({ error: "Please provide name, email, and password." });
+    if (!name || !username || !email || !password) {
+      return res.status(400).json({
+        error: "Please provide name, username, email, and password.",
+      });
+    }
+
+    const trimmedUsername = String(username).trim();
+    if (trimmedUsername === "") {
+      return res.status(400).json({ error: "Username cannot be empty." });
     }
 
     const normalizedEmail = email.toLowerCase();
-    const existing = await User.findOne({ email: normalizedEmail });
-    if (existing) {
+    const normalizedUsername = trimmedUsername.toLowerCase();
+
+    // Reject duplicate emails (existing behavior).
+    const existingEmail = await User.findOne({ email: normalizedEmail });
+    if (existingEmail) {
       return res.status(409).json({ error: "That email is already registered." });
+    }
+
+    // Reject duplicate usernames (case-insensitive thanks to usernameLower).
+    const existingUsername = await User.findOne({
+      usernameLower: normalizedUsername,
+    });
+    if (existingUsername) {
+      return res.status(400).json({ error: "Username is already taken." });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
       name,
+      username: trimmedUsername,
       email: normalizedEmail,
       password: hashedPassword,
     });
 
+    // Note: we never include `password` in the response.
     res.status(201).json({
       message: "Signup successful.",
-      user: { id: newUser.id, name: newUser.name, email: newUser.email },
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        username: newUser.username,
+        email: newUser.email,
+      },
     });
   } catch (err) {
-    // Race condition fallback: rely on the unique index for email collisions.
+    // Race condition fallback: rely on the unique indexes if two requests
+    // race past the findOne checks above.
     if (err && err.code === 11000) {
-      return res.status(409).json({ error: "That email is already registered." });
+      const dupKey = err.keyPattern || {};
+      if (dupKey.usernameLower) {
+        return res.status(400).json({ error: "Username is already taken." });
+      }
+      if (dupKey.email) {
+        return res.status(409).json({ error: "That email is already registered." });
+      }
+      // Unknown unique-index conflict — safest beginner-friendly default.
+      return res.status(400).json({ error: "Username is already taken." });
     }
     console.error("POST /api/signup failed:", err);
     res.status(500).json({ error: "Signup failed." });
+  }
+});
+
+// GET /api/users/search?username=...
+// Case-insensitive, partial username search.
+// Returns ONLY the safe public fields:
+//   - profilePicture
+//   - displayName
+//   - username
+//   - bio
+// Returns an empty array if the query is missing/empty or nothing matches.
+app.get("/api/users/search", async (req, res) => {
+  try {
+    const raw =
+      typeof req.query.username === "string" ? req.query.username.trim() : "";
+
+    // No query? Don't dump every user — return an empty array.
+    if (raw === "") {
+      return res.json([]);
+    }
+
+    // Escape regex metacharacters so a search like "a.b" matches the literal
+    // string "a.b" and not "a" + any char + "b".
+    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // The "i" flag makes the match case-insensitive. Searching the
+    // pre-normalized `usernameLower` field would also work and is faster
+    // for very large user tables; using the regex against `usernameLower`
+    // gives us both correctness and a nicer indexed lookup.
+    const pattern = new RegExp(escaped, "i");
+
+    // .select() with `-_id` keeps the response to exactly the four fields
+    // the spec asks for. .lean() returns plain JS objects (faster, and
+    // skips the toJSON transform we don't need here).
+    const matches = await User.find({ usernameLower: pattern })
+      .select("username displayName profilePicture bio -_id")
+      .limit(20)
+      .lean();
+
+    res.json(matches);
+  } catch (err) {
+    console.error("GET /api/users/search failed:", err);
+    res.status(500).json({ error: "User search failed." });
   }
 });
 
