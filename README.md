@@ -21,6 +21,11 @@ The Live Event Web App is a full-stack web application designed to help college 
 * 📍 View Event Details (date, time, location, description)
 * ✅ RSVP to Events
 * 🎨 Clean and modern responsive UI
+* 🤝 Friend Request System (send, accept, deny)
+* 🔍 User Search by Username
+* 📩 Add Friends via Profile Search
+* 🎟️ Persistent RSVP System (saved to database)
+* ❌ Cancel RSVP functionality
 
 ---
 
@@ -37,9 +42,9 @@ The Live Event Web App is a full-stack web application designed to help college 
 * Node.js
 * Express.js
 
-### Database *(in progress / or update when done)*
+### Database
 
-* MongoDB (planned for persistent storage)
+* MongoDB Atlas (used for storing users, profiles, friends, and RSVPs)
 
 ---
 
@@ -107,7 +112,7 @@ http://localhost:3000
 * ✅ Frontend completed
 * ✅ Backend API created
 * ✅ Frontend connected to backend
-* 🔄 Database integration (MongoDB) in progress
+* ✅ Database integration (MongoDB) in progress
 * 🔄 Deployment pending
 
 ---
