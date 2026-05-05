@@ -1913,6 +1913,19 @@ document.addEventListener("DOMContentLoaded", function () {
     card.className = "user-result-card friend-card";
     card.appendChild(buildAvatar(friend));
     card.appendChild(buildInfoBlock(friend));
+
+    var actions = document.createElement("div");
+    actions.className = "user-result-actions friend-actions";
+    var msgBtn = document.createElement("button");
+    msgBtn.type = "button";
+    msgBtn.className = "btn btn-primary friend-action-btn friend-msg-btn";
+    msgBtn.textContent = "Message";
+    msgBtn.addEventListener("click", function () {
+      openChat(friend.username);
+    });
+    actions.appendChild(msgBtn);
+    card.appendChild(actions);
+
     return card;
   }
 
@@ -2188,11 +2201,291 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // -------------------------------------------------------------------------
+  // 4) MESSAGING / CHAT
+  // -------------------------------------------------------------------------
+  var MESSAGES_API_URL = "http://localhost:3000/api/messages";
+  var CONVERSATIONS_API_URL = "http://localhost:3000/api/conversations";
+  var MESSAGES_READ_API_URL = "http://localhost:3000/api/messages/read";
+
+  var conversationsListEl = document.getElementById("conversations-list");
+  var chatOverlay = document.getElementById("chat-overlay");
+  var chatPartnerNameEl = document.getElementById("chat-partner-name");
+  var chatMessagesEl = document.getElementById("chat-messages");
+  var chatForm = document.getElementById("chat-form");
+  var chatInput = document.getElementById("chat-input");
+  var chatCloseBtn = document.getElementById("chat-close-btn");
+
+  var activeChatPartner = null;
+
+  // ----- Conversations list ------------------------------------------------
+
+  function formatConvoTime(isoString) {
+    if (!isoString) return "";
+    var d = new Date(isoString);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleDateString(undefined, {
+      month: "short", day: "numeric"
+    }) + " " + d.toLocaleTimeString(undefined, {
+      hour: "numeric", minute: "2-digit"
+    });
+  }
+
+  function buildConversationCard(convo) {
+    var card = document.createElement("article");
+    card.className = "user-result-card friend-card conversation-card";
+
+    var avatar = document.createElement("div");
+    avatar.className = "user-result-avatar";
+    var initial = (convo.partner || "U").charAt(0).toUpperCase();
+    avatar.textContent = initial;
+    card.appendChild(avatar);
+
+    var info = document.createElement("div");
+    info.className = "user-result-info";
+    var name = document.createElement("p");
+    name.className = "user-result-name";
+    name.textContent = "@" + convo.partner;
+    info.appendChild(name);
+
+    var preview = document.createElement("p");
+    preview.className = "convo-preview";
+    var last = convo.lastMessage || {};
+    var previewText = last.text || "";
+    if (previewText.length > 60) previewText = previewText.substring(0, 57) + "...";
+    if (last.senderUsername === myUsername.toLowerCase()) {
+      previewText = "You: " + previewText;
+    }
+    preview.textContent = previewText;
+    info.appendChild(preview);
+
+    var time = document.createElement("p");
+    time.className = "convo-time";
+    time.textContent = formatConvoTime(last.createdAt);
+    info.appendChild(time);
+
+    card.appendChild(info);
+
+    if (last.senderUsername !== myUsername.toLowerCase() && last.read === false) {
+      var badge = document.createElement("span");
+      badge.className = "convo-unread-badge";
+      badge.textContent = "New";
+      card.appendChild(badge);
+    }
+
+    card.style.cursor = "pointer";
+    card.addEventListener("click", function () {
+      openChat(convo.partner);
+    });
+
+    return card;
+  }
+
+  function loadConversations() {
+    if (!conversationsListEl) return;
+    renderLoadingInto(conversationsListEl);
+
+    var url = CONVERSATIONS_API_URL + "/" + encodeURIComponent(myUsername);
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) throw new Error("Status " + response.status);
+        return response.json();
+      })
+      .then(function (convos) {
+        if (!Array.isArray(convos) || convos.length === 0) {
+          renderEmptyInto(
+            conversationsListEl,
+            "No conversations yet. Message a friend to get started!"
+          );
+          return;
+        }
+        conversationsListEl.innerHTML = "";
+        convos.forEach(function (c) {
+          conversationsListEl.appendChild(buildConversationCard(c));
+        });
+      })
+      .catch(function (err) {
+        console.error("Failed to load conversations:", err);
+        renderEmptyInto(
+          conversationsListEl,
+          "Could not load conversations. Make sure the backend is running."
+        );
+      });
+  }
+
+  // ----- Chat window -------------------------------------------------------
+
+  function formatMessageTime(isoString) {
+    if (!isoString) return "";
+    var d = new Date(isoString);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString(undefined, {
+      hour: "numeric", minute: "2-digit"
+    });
+  }
+
+  function renderChatMessages(messages) {
+    if (!chatMessagesEl) return;
+    chatMessagesEl.innerHTML = "";
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "chat-empty";
+      empty.textContent = "No messages yet. Say hello!";
+      chatMessagesEl.appendChild(empty);
+      return;
+    }
+
+    var myLower = myUsername.toLowerCase();
+    messages.forEach(function (msg) {
+      var bubble = document.createElement("div");
+      var isMine = msg.senderUsername === myLower;
+      bubble.className = "chat-bubble" + (isMine ? " chat-bubble--sent" : " chat-bubble--received");
+
+      var senderEl = document.createElement("span");
+      senderEl.className = "chat-bubble-sender";
+      senderEl.textContent = isMine ? "You" : "@" + msg.senderUsername;
+      bubble.appendChild(senderEl);
+
+      var textEl = document.createElement("p");
+      textEl.className = "chat-bubble-text";
+      textEl.textContent = msg.text;
+      bubble.appendChild(textEl);
+
+      var timeEl = document.createElement("span");
+      timeEl.className = "chat-bubble-time";
+      timeEl.textContent = formatMessageTime(msg.createdAt);
+      bubble.appendChild(timeEl);
+
+      chatMessagesEl.appendChild(bubble);
+    });
+
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  function loadChatThread(partnerUsername) {
+    if (!chatMessagesEl) return;
+    chatMessagesEl.innerHTML = "<p class='chat-loading'>Loading...</p>";
+
+    var url =
+      MESSAGES_API_URL + "/" +
+      encodeURIComponent(myUsername) + "/" +
+      encodeURIComponent(partnerUsername);
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) throw new Error("Status " + response.status);
+        return response.json();
+      })
+      .then(function (messages) {
+        renderChatMessages(messages);
+      })
+      .catch(function (err) {
+        console.error("Failed to load chat:", err);
+        chatMessagesEl.innerHTML =
+          "<p class='chat-empty'>Could not load messages.</p>";
+      });
+  }
+
+  function markMessagesAsRead(partnerUsername) {
+    fetch(MESSAGES_READ_API_URL, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senderUsername: partnerUsername,
+        receiverUsername: myUsername,
+      }),
+    }).catch(function (err) {
+      console.error("Failed to mark messages as read:", err);
+    });
+  }
+
+  function openChat(partnerUsername) {
+    if (!chatOverlay || !chatPartnerNameEl) return;
+    activeChatPartner = partnerUsername;
+    chatPartnerNameEl.textContent = "Chat with @" + partnerUsername;
+    chatOverlay.classList.remove("is-hidden");
+
+    loadChatThread(partnerUsername);
+    markMessagesAsRead(partnerUsername);
+
+    if (chatInput) {
+      chatInput.value = "";
+      chatInput.focus();
+    }
+  }
+
+  function closeChat() {
+    if (!chatOverlay) return;
+    chatOverlay.classList.add("is-hidden");
+    activeChatPartner = null;
+    loadConversations();
+  }
+
+  function sendChatMessage(text) {
+    if (!activeChatPartner || text === "") return;
+    var sendBtn = document.getElementById("chat-send-btn");
+    if (sendBtn) sendBtn.disabled = true;
+
+    fetch(MESSAGES_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senderUsername: myUsername,
+        receiverUsername: activeChatPartner,
+        text: text,
+      }),
+    })
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        }).catch(function () {
+          return { ok: response.ok, data: {} };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          if (chatInput) chatInput.value = "";
+          loadChatThread(activeChatPartner);
+        } else {
+          var errMsg = (result.data && result.data.error) || "Could not send message.";
+          alert(errMsg);
+        }
+      })
+      .catch(function (err) {
+        console.error("Failed to send message:", err);
+        alert("Could not reach the server. Please try again.");
+      })
+      .finally(function () {
+        if (sendBtn) sendBtn.disabled = false;
+        if (chatInput) chatInput.focus();
+      });
+  }
+
+  if (chatCloseBtn) {
+    chatCloseBtn.addEventListener("click", closeChat);
+  }
+
+  if (chatOverlay) {
+    chatOverlay.addEventListener("click", function (e) {
+      if (e.target === chatOverlay) closeChat();
+    });
+  }
+
+  if (chatForm) {
+    chatForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var text = chatInput ? chatInput.value.trim() : "";
+      if (text !== "") sendChatMessage(text);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Initial load
   // -------------------------------------------------------------------------
   loadFriends();
   loadIncomingRequests();
   renderOutgoing();
+  loadConversations();
 });
 
 

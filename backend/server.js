@@ -14,9 +14,10 @@ const User = require("./models/User");
 const Event = require("./models/Event");
 const RSVP = require("./models/RSVP");
 const FriendRequest = require("./models/FriendRequest");
+const Message = require("./models/Message");
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const MONGO_URI = process.env.MONGO_URI;
 
 app.use(cors());
@@ -821,6 +822,228 @@ app.get("/api/rsvps/:username", async (req, res) => {
   } catch (err) {
     console.error("GET /api/rsvps/:username failed:", err);
     res.status(500).json({ error: "Could not load RSVP'd events." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Messaging routes
+// ---------------------------------------------------------------------------
+
+// POST /api/messages
+// Sends a direct message from one user to another.
+// Body: { senderUsername, receiverUsername, text }
+//
+// Validation:
+//   - All three fields must be non-empty strings.
+//   - Sender cannot message themselves.
+//   - Both users must exist.
+//   - The two users must already be friends (messaging is friends-only).
+//   - Respects the receiver's "allow messages" preference if stored on the
+//     User document in the future (no-op for now; structure is in place).
+app.post("/api/messages", async (req, res) => {
+  try {
+    const sender = normalizeUsername(req.body.senderUsername);
+    const receiver = normalizeUsername(req.body.receiverUsername);
+    const text =
+      typeof req.body.text === "string" ? req.body.text.trim() : "";
+
+    if (!sender || !receiver || text === "") {
+      return res.status(400).json({
+        error: "Please provide senderUsername, receiverUsername, and text.",
+      });
+    }
+
+    if (sender === receiver) {
+      return res
+        .status(400)
+        .json({ error: "You cannot send a message to yourself." });
+    }
+
+    const senderUser = await findUserByUsername(sender);
+    if (!senderUser) {
+      return res.status(404).json({ error: "Sender user not found." });
+    }
+
+    const receiverUser = await findUserByUsername(receiver);
+    if (!receiverUser) {
+      return res.status(404).json({ error: "Receiver user not found." });
+    }
+
+    // Only friends can message each other.
+    const areFriends =
+      Array.isArray(senderUser.friends) &&
+      senderUser.friends.includes(receiver);
+    if (!areFriends) {
+      return res.status(403).json({
+        error: "You can only message users who are your friends.",
+      });
+    }
+
+    const newMessage = await Message.create({
+      senderUsername: sender,
+      receiverUsername: receiver,
+      text,
+    });
+
+    res.status(201).json({
+      message: "Message sent.",
+      data: newMessage,
+    });
+  } catch (err) {
+    console.error("POST /api/messages failed:", err);
+    res.status(500).json({ error: "Could not send message." });
+  }
+});
+
+// GET /api/messages/:userA/:userB
+// Returns every message exchanged between userA and userB, oldest first.
+// Both directions (A→B and B→A) are included so the frontend can render a
+// continuous thread. Usernames are normalized before the query so casing
+// in the URL doesn't matter.
+app.get("/api/messages/:userA/:userB", async (req, res) => {
+  try {
+    const userA = normalizeUsername(req.params.userA);
+    const userB = normalizeUsername(req.params.userB);
+
+    if (!userA || !userB) {
+      return res.status(400).json({ error: "Invalid username(s)." });
+    }
+
+    if (userA === userB) {
+      return res
+        .status(400)
+        .json({ error: "userA and userB must be different users." });
+    }
+
+    // Fetch both directions in one query using $or so the result is a
+    // single chronological thread rather than two separate half-threads.
+    const messages = await Message.find({
+      $or: [
+        { senderUsername: userA, receiverUsername: userB },
+        { senderUsername: userB, receiverUsername: userA },
+      ],
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // .lean() skips toJSON, so shape the payload explicitly.
+    res.json(
+      messages.map((m) => ({
+        id: m._id.toString(),
+        senderUsername: m.senderUsername,
+        receiverUsername: m.receiverUsername,
+        text: m.text,
+        createdAt: m.createdAt,
+        read: m.read,
+      }))
+    );
+  } catch (err) {
+    console.error("GET /api/messages/:userA/:userB failed:", err);
+    res.status(500).json({ error: "Could not load messages." });
+  }
+});
+
+// GET /api/conversations/:username
+// Returns an inbox summary: one entry per friend the user has exchanged at
+// least one message with, including the most recent message in that thread.
+// Sorted newest-last-message first so the inbox feels natural.
+//
+// Implementation uses an aggregation pipeline:
+//   1. Match all messages where this user is sender or receiver.
+//   2. Add a "partner" field (the other participant's username).
+//   3. Sort within the pipeline (needed before $group picks $last).
+//   4. Group by partner, keeping the last message fields.
+//   5. Sort the groups by the last message date descending.
+app.get("/api/conversations/:username", async (req, res) => {
+  try {
+    const username = normalizeUsername(req.params.username);
+    if (!username) {
+      return res.status(400).json({ error: "Invalid username." });
+    }
+
+    const conversations = await Message.aggregate([
+      // Step 1: only messages involving this user.
+      {
+        $match: {
+          $or: [
+            { senderUsername: username },
+            { receiverUsername: username },
+          ],
+        },
+      },
+      // Step 2: tag each message with who the "other" participant is.
+      {
+        $addFields: {
+          partner: {
+            $cond: {
+              if: { $eq: ["$senderUsername", username] },
+              then: "$receiverUsername",
+              else: "$senderUsername",
+            },
+          },
+        },
+      },
+      // Step 3: sort oldest→newest so $last picks the most recent message.
+      { $sort: { createdAt: 1 } },
+      // Step 4: one document per partner, keeping the latest message fields.
+      {
+        $group: {
+          _id: "$partner",
+          lastMessageText: { $last: "$text" },
+          lastMessageAt: { $last: "$createdAt" },
+          lastMessageSender: { $last: "$senderUsername" },
+          lastMessageRead: { $last: "$read" },
+        },
+      },
+      // Step 5: most recent conversation first.
+      { $sort: { lastMessageAt: -1 } },
+    ]);
+
+    // Shape the response to a clean array.
+    res.json(
+      conversations.map((c) => ({
+        partner: c._id,
+        lastMessage: {
+          text: c.lastMessageText,
+          createdAt: c.lastMessageAt,
+          senderUsername: c.lastMessageSender,
+          read: c.lastMessageRead,
+        },
+      }))
+    );
+  } catch (err) {
+    console.error("GET /api/conversations/:username failed:", err);
+    res.status(500).json({ error: "Could not load conversations." });
+  }
+});
+
+// PATCH /api/messages/read
+// Marks all messages sent FROM senderUsername TO receiverUsername as read.
+// Body: { senderUsername, receiverUsername }
+// Idempotent: calling it when messages are already read is a no-op (200).
+app.patch("/api/messages/read", async (req, res) => {
+  try {
+    const sender = normalizeUsername(req.body.senderUsername);
+    const receiver = normalizeUsername(req.body.receiverUsername);
+
+    if (!sender || !receiver) {
+      return res.status(400).json({
+        error: "Please provide senderUsername and receiverUsername.",
+      });
+    }
+
+    const result = await Message.updateMany(
+      { senderUsername: sender, receiverUsername: receiver, read: false },
+      { $set: { read: true } }
+    );
+
+    res.json({
+      message: "Messages marked as read.",
+      updatedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error("PATCH /api/messages/read failed:", err);
+    res.status(500).json({ error: "Could not mark messages as read." });
   }
 });
 

@@ -77,8 +77,40 @@
         ></div>
       </section>
 
+      <!-- Conversations (recent messages) -->
+      <section class="profile-card-block" aria-labelledby="conversations-heading">
+        <h3 id="conversations-heading">Messages</h3>
+        <div
+          id="conversations-list"
+          class="friend-card-list"
+          aria-live="polite"
+        ></div>
+      </section>
+
     </div>
   </main>
+
+  <!-- Chat modal overlay -->
+  <div id="chat-overlay" class="chat-overlay is-hidden" role="dialog" aria-modal="true" aria-label="Chat">
+    <div class="chat-window">
+      <header class="chat-header">
+        <h3 id="chat-partner-name">Chat</h3>
+        <button type="button" id="chat-close-btn" class="chat-close-btn" aria-label="Close chat">&times;</button>
+      </header>
+      <div id="chat-messages" class="chat-messages" aria-live="polite"></div>
+      <form id="chat-form" class="chat-form" autocomplete="off">
+        <input
+          type="text"
+          id="chat-input"
+          class="chat-input"
+          placeholder="Type a message..."
+          required
+          maxlength="2000"
+        />
+        <button type="submit" id="chat-send-btn" class="btn btn-primary chat-send-btn">Send</button>
+      </form>
+    </div>
+  </div>
 
   <script src="script.js"></script>
 </body>
