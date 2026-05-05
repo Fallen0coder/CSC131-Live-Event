@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Event - Add Event</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="navbar">
+    <div class="container nav-content">
+      <h1 class="logo">Live Event</h1>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html">Home</a></li>
+          <li><a class="active" href="events.html">Events</a></li>
+          <li id="profile-link" class="is-hidden"><a href="profile.html">Profile</a></li>
+          <li id="friends-link" class="is-hidden"><a href="friends.html">Friends</a></li>
+          <li id="login-link"><a href="login.html">Login</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="about.html">About Us</a></li>
+          <li id="nav-logout-li" class="is-hidden">
+            <button type="button" id="nav-logout-btn" class="nav-logout-btn">Log out</button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <!--
+    The Add Event page reuses the same card layout used by signup.html and
+    login.html (.signup-page > .login-page-inner > .login-card) so it stays
+    visually consistent with the rest of Live Event.
+  -->
+  <main class="signup-page">
+    <div class="container login-page-inner">
+      <form id="add-event-form" class="login-card" novalidate>
+        <h2>Add a new event</h2>
+        <p class="login-subtitle">
+          Share something happening on campus. All fields below are required.
+        </p>
+
+        <div class="form-field">
+          <label for="event-title">Event Title</label>
+          <input
+            type="text"
+            id="event-title"
+            name="title"
+            placeholder="e.g. Spring Concert"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="event-date">Date</label>
+          <input
+            type="date"
+            id="event-date"
+            name="date"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="event-time">Time</label>
+          <input
+            type="time"
+            id="event-time"
+            name="time"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="event-location">Location</label>
+          <input
+            type="text"
+            id="event-location"
+            name="location"
+            placeholder="e.g. Main Quad"
+          />
+        </div>
+
+        <div class="form-field">
+          <label for="event-category">Category</label>
+          <select id="event-category" name="category">
+            <option value="">Choose a category</option>
+            <option value="social">Social</option>
+            <option value="tech">Tech</option>
+            <option value="career">Career</option>
+            <option value="outdoor">Outdoor</option>
+            <option value="music">Music</option>
+            <option value="sports">Sports</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="event-description">Description</label>
+          <textarea
+            id="event-description"
+            name="description"
+            rows="4"
+            placeholder="Tell people what to expect."
+          ></textarea>
+        </div>
+
+        <button type="submit" id="add-event-submit-btn" class="login-submit-btn">
+          Create event
+        </button>
+
+        <!-- Success / error messages render here (see script.js). -->
+        <p id="add-event-message" class="settings-message" role="status" aria-live="polite"></p>
+
+        <p class="login-signup">
+          Changed your mind?
+          <a href="events.html">Back to events</a>
+        </p>
+      </form>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <strong class="footer-logo">Live Event</strong>
+        <p class="footer-tagline">
+          Your hub for campus events, meetups, and memorable experiences.
+        </p>
+      </div>
+      <div class="footer-links">
+        <h3 class="footer-heading">Explore</h3>
+        <ul>
+          <li><a href="index.html">Home</a></li>
+          <li><a href="events.html">Events</a></li>
+        </ul>
+      </div>
+      <div class="footer-links">
+        <h3 class="footer-heading">Account</h3>
+        <ul>
+          <li><a href="login.html">Log in</a></li>
+          <li><a href="signup.html">Sign up</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div class="container footer-bottom-inner">
+        <p>&copy; 2026 Live Event.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

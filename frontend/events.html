@@ -33,6 +33,21 @@
         <span class="events-eyebrow">Upcoming on campus</span>
         <h2>Events Happening Soon</h2>
         <p>Find something fun, then RSVP in a single click.</p>
+
+        <!--
+          The Add Event button only appears for logged-in users. It starts
+          hidden via the .is-hidden class and is revealed by
+          refreshNavAuthVisibility() in script.js when isLoggedIn() is true.
+        -->
+        <div class="events-header-actions">
+          <a
+            id="add-event-btn"
+            href="add-event.html"
+            class="btn btn-primary is-hidden"
+          >
+            + Add Event
+          </a>
+        </div>
       </section>
 
       <div id="events-container" class="events-grid"></div>

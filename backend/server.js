@@ -69,20 +69,29 @@ async function seedEvents() {
       {
         title: "Campus Hack Night",
         date: "2026-05-15",
+        time: "18:00",
         location: "Engineering Building",
+        category: "tech",
         description: "Build projects and meet other students.",
+        creatorUsername: "",
       },
       {
         title: "Spring Concert",
         date: "2026-06-01",
+        time: "19:30",
         location: "Main Quad",
+        category: "music",
         description: "Live music and food trucks.",
+        creatorUsername: "",
       },
       {
         title: "Career Fair",
         date: "2026-06-10",
+        time: "10:00",
         location: "Student Union Ballroom",
+        category: "career",
         description: "Meet recruiters from local tech companies.",
+        creatorUsername: "",
       },
     ];
 
@@ -98,14 +107,86 @@ async function seedEvents() {
 // ---------------------------------------------------------------------------
 
 // GET /api/events
-// Returns the full list of events from MongoDB.
+// Returns every event in the database, newest first.
+// "Newest" means the most recently *created* event (createdAt desc), so a
+// brand-new event a user just submitted shows up at the top of the list.
 app.get("/api/events", async (req, res) => {
   try {
-    const events = await Event.find().sort({ date: 1 });
+    const events = await Event.find().sort({ createdAt: -1 });
     res.json(events);
   } catch (err) {
     console.error("GET /api/events failed:", err);
     res.status(500).json({ error: "Failed to fetch events." });
+  }
+});
+
+// POST /api/events
+// Creates a new event and saves it permanently to MongoDB so every user
+// (and every future server restart) can still see it.
+//
+// Expected JSON body:
+//   {
+//     title:           string  (required)
+//     date:            string  (required, e.g. "2026-05-15")
+//     time:            string  (required, e.g. "18:00")
+//     location:        string  (required)
+//     description:     string  (required)
+//     category:        string  (optional, e.g. "tech", "music")
+//     creatorUsername: string  (optional, who created the event)
+//   }
+//
+// Validation: title, date, time, location, and description must all be
+// non-empty strings. Anything else returns 400 with a friendly message.
+app.post("/api/events", async (req, res) => {
+  try {
+    const {
+      title,
+      date,
+      time,
+      location,
+      category,
+      description,
+      creatorUsername,
+    } = req.body || {};
+
+    // Helper: true only if the value is a non-empty string after trimming.
+    function isFilled(value) {
+      return typeof value === "string" && value.trim() !== "";
+    }
+
+    // The five fields the assignment marks as required.
+    if (
+      !isFilled(title) ||
+      !isFilled(date) ||
+      !isFilled(time) ||
+      !isFilled(location) ||
+      !isFilled(description)
+    ) {
+      return res.status(400).json({
+        error:
+          "Please provide title, date, time, location, and description.",
+      });
+    }
+
+    // Build the document. We trim every string so we don't store stray
+    // whitespace, and we default the optional fields to empty strings so
+    // the response shape is always predictable.
+    const newEvent = await Event.create({
+      title: title.trim(),
+      date: date.trim(),
+      time: time.trim(),
+      location: location.trim(),
+      category: typeof category === "string" ? category.trim() : "",
+      description: description.trim(),
+      creatorUsername:
+        typeof creatorUsername === "string" ? creatorUsername.trim() : "",
+    });
+
+    // 201 Created + the saved event (including its id and createdAt).
+    res.status(201).json(newEvent);
+  } catch (err) {
+    console.error("POST /api/events failed:", err);
+    res.status(500).json({ error: "Could not create event." });
   }
 });
 

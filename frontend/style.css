@@ -522,6 +522,14 @@ body {
   margin: 0 auto;
 }
 
+/* Action row under the events header (currently holds the Add Event button
+   for logged-in users). Centered to match the rest of the header content. */
+.events-header-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
 .events-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -628,6 +636,33 @@ body {
   color: var(--color-text);
   font-size: 0.95rem;
   line-height: 1.55;
+}
+
+/* "Created by @username" line at the bottom of each event card. Sits above
+   the RSVP button and uses the same muted look as .event-meta-row so it
+   blends in with the rest of the card's metadata. */
+.event-creator {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.1rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.88rem;
+}
+
+.event-creator strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+body.theme-dark .event-creator {
+  border-top-color: rgba(148, 163, 184, 0.22);
+}
+
+body.theme-dark .event-creator strong {
+  color: #e5e7eb;
 }
 
 .rsvp-btn {
@@ -856,6 +891,25 @@ body {
   border-radius: 8px;
   background-color: #f9fafb;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-field select {
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  font-size: 1rem;
+  font-family: inherit;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background-color: #f9fafb;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-field select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  background-color: #ffffff;
 }
 
 .form-field textarea {
@@ -1162,14 +1216,16 @@ body.theme-dark .form-field label {
 }
 
 body.theme-dark .form-field input,
-body.theme-dark .form-field textarea {
+body.theme-dark .form-field textarea,
+body.theme-dark .form-field select {
   background-color: rgba(2, 6, 23, 0.65);
   border-color: rgba(148, 163, 184, 0.28);
   color: var(--color-text);
 }
 
 body.theme-dark .form-field input:focus,
-body.theme-dark .form-field textarea:focus {
+body.theme-dark .form-field textarea:focus,
+body.theme-dark .form-field select:focus {
   background-color: rgba(2, 6, 23, 0.82);
   border-color: rgba(59, 130, 246, 0.8);
 }
@@ -1750,7 +1806,8 @@ body.a11y-high-contrast.theme-dark {
 }
 
 body.a11y-high-contrast .form-field input,
-body.a11y-high-contrast .form-field textarea {
+body.a11y-high-contrast .form-field textarea,
+body.a11y-high-contrast .form-field select {
   border-width: 2px;
 }
 

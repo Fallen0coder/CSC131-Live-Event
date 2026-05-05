@@ -145,6 +145,10 @@ function refreshNavAuthVisibility() {
   const logoutLi = document.getElementById("nav-logout-li");
   if (logoutLi) logoutLi.classList.toggle("is-hidden", !loggedIn);
 
+  // Events page: only show the "Add Event" button when a user is logged in.
+  const addEventBtn = document.getElementById("add-event-btn");
+  if (addEventBtn) addEventBtn.classList.toggle("is-hidden", !loggedIn);
+
   // Homepage: hide the "Create Account" hero button when the user is
   // already logged in (they don't need to create another account).
   const createAccountBtn = document.getElementById("create-account-btn");
@@ -324,15 +328,9 @@ document.addEventListener("DOMContentLoaded", function () {
   const EVENTS_API_URL = "http://localhost:3000/api/events";
   const RSVP_API_URL = "http://localhost:3000/api/rsvp";
 
-  // Real user sessions aren't fully built yet. The backend only knows about
-  // its seeded demo users (ids 1 and 2). If the logged-in user matches one
-  // of those, use their id; otherwise fall back to user 1 so the RSVP demo
-  // still works for a freshly-signed-up local account.
-  const currentUser = getCurrentUser();
-  const userId =
-    currentUser && (currentUser.id === 1 || currentUser.id === 2)
-      ? currentUser.id
-      : 1;
+  // We deliberately do NOT cache the user at page load. The user might log
+  // in / out in another tab, so we re-read getCurrentUser() inside sendRsvp
+  // every time the button is clicked. See sendRsvp() below.
 
   function escapeHtml(value) {
     if (value === null || value === undefined) return "";
@@ -395,13 +393,27 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function sendRsvp(rsvpButton, event) {
+    // Always look up the logged-in user at click time so we react to fresh
+    // logins/logouts (including from other tabs). The user object lives in
+    // localStorage under the "liveEventCurrentUser" key — see the
+    // setCurrentUser() / getCurrentUser() helpers near the top of this file.
+    const user = getCurrentUser();
+    if (!user || !user.id) {
+      alert("You must be logged in to RSVP.");
+      return;
+    }
+
     rsvpButton.disabled = true;
     rsvpButton.textContent = "Saving\u2026";
 
+    // Send BOTH userId (the real Mongo ObjectId of the logged-in user) and
+    // eventId (the Mongo ObjectId of the card the user clicked, supplied
+    // by the backend in GET /api/events). The backend route at
+    // POST /api/rsvp validates that both IDs exist before saving.
     fetch(RSVP_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: userId, eventId: event.id })
+      body: JSON.stringify({ userId: user.id, eventId: event.id })
     })
       .then(function (response) {
         return response.json().then(function (data) {
@@ -413,7 +425,9 @@ document.addEventListener("DOMContentLoaded", function () {
           rsvpButton.textContent = "RSVP\u2019d";
           rsvpButton.disabled = true;
           rsvpButton.classList.add("is-rsvped");
-          alert("You RSVP\u2019d to this event!");
+          alert(
+            (result.data && result.data.message) || "RSVP successful!"
+          );
         } else {
           const message =
             (result.data && result.data.error) ||
@@ -441,6 +455,9 @@ document.addEventListener("DOMContentLoaded", function () {
     const safeLocation = escapeHtml(event.location);
     const safeDescription = escapeHtml(event.description);
     const categoryLabel = escapeHtml(formatCategoryLabel(event.category));
+    // creatorUsername is optional — older seeded events don't have it.
+    // We only render the "Created by" line when a non-empty username exists.
+    const safeCreator = escapeHtml(event.creatorUsername || "");
 
     let html = "<div class='event-card-header'>";
     html += "<h3>" + safeTitle + "</h3>";
@@ -475,6 +492,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (safeDescription) {
       html += "<p class='event-description'>" + safeDescription + "</p>";
+    }
+
+    if (safeCreator) {
+      html +=
+        "<p class='event-creator'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDC64</span>" +
+          "<span>Created by <strong>@" + safeCreator + "</strong></span>" +
+        "</p>";
     }
 
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
@@ -2141,3 +2166,133 @@ if (deleteAccountBtn && deleteMessage) {
     );
   });
 }
+
+
+// ===========================================================================
+// ADD EVENT PAGE: POST a new event to the backend (add-event.html)
+// ===========================================================================
+// Wires up the form on add-event.html so it:
+//   1. Validates that the required fields are filled in.
+//   2. Sends a POST to /api/events with the event details + the current
+//      user's username (read from localStorage via getCurrentUser()).
+//   3. Shows a success or error message in #add-event-message.
+//   4. On success, redirects back to events.html so the new event shows up.
+//
+// This handler bails out early if the form isn't on the current page, so it
+// safely coexists with every other page (events, profile, friends, etc.).
+document.addEventListener("DOMContentLoaded", function () {
+  const addEventForm = document.getElementById("add-event-form");
+  if (!addEventForm) return;
+
+  const titleInput = document.getElementById("event-title");
+  const dateInput = document.getElementById("event-date");
+  const timeInput = document.getElementById("event-time");
+  const locationInput = document.getElementById("event-location");
+  const categoryInput = document.getElementById("event-category");
+  const descriptionInput = document.getElementById("event-description");
+  const submitBtn = document.getElementById("add-event-submit-btn");
+  const messageEl = document.getElementById("add-event-message");
+
+  const ADD_EVENT_API_URL = "http://localhost:3000/api/events";
+
+  // Tiny helper that mirrors the signup/login pages: writes the message
+  // text and applies the matching color class (green for success, red for
+  // error) defined in style.css.
+  function showMsg(text, type) {
+    if (!messageEl) {
+      alert(text);
+      return;
+    }
+    messageEl.textContent = text;
+    messageEl.classList.remove("is-success", "is-error");
+    if (type) messageEl.classList.add("is-" + type);
+  }
+
+  addEventForm.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    // Pull and trim every value once so the rest of the function can
+    // treat them as plain strings.
+    const title = (titleInput.value || "").trim();
+    const date = (dateInput.value || "").trim();
+    const time = (timeInput.value || "").trim();
+    const location = (locationInput.value || "").trim();
+    const category = (categoryInput.value || "").trim();
+    const description = (descriptionInput.value || "").trim();
+
+    // The five required fields, matching the backend's validation in
+    // POST /api/events. Category is optional, so it isn't checked here.
+    if (
+      title === "" ||
+      date === "" ||
+      time === "" ||
+      location === "" ||
+      description === ""
+    ) {
+      showMsg(
+        "Please fill in title, date, time, location, and description.",
+        "error"
+      );
+      return;
+    }
+
+    // Pull the username out of the saved login info so the backend knows
+    // who created the event. If nobody is logged in we still let the
+    // POST through with an empty creatorUsername — the backend treats
+    // that field as optional.
+    const currentUser = getCurrentUser();
+    const creatorUsername =
+      (currentUser && (currentUser.username || "")) || "";
+
+    if (submitBtn) submitBtn.disabled = true;
+    showMsg("Creating event\u2026", "info");
+
+    fetch(ADD_EVENT_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: title,
+        date: date,
+        time: time,
+        location: location,
+        category: category,
+        description: description,
+        creatorUsername: creatorUsername
+      })
+    })
+      .then(function (response) {
+        // Always read the JSON body so we can show the backend's exact
+        // error message (e.g. "Please provide title, date, ...").
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) || "Could not create event.";
+          showMsg(message, "error");
+          if (submitBtn) submitBtn.disabled = false;
+          return;
+        }
+
+        showMsg("Event created! Redirecting\u2026", "success");
+        setTimeout(function () {
+          window.location.href = "events.html";
+        }, 600);
+      })
+      .catch(function (error) {
+        console.error("POST /api/events failed:", error);
+        showMsg(
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+        if (submitBtn) submitBtn.disabled = false;
+      });
+  });
+});
