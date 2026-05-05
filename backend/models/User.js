@@ -59,11 +59,15 @@ const userSchema = new mongoose.Schema({
 // Keep `usernameLower` in sync with `username` automatically.
 // Runs before validation so the `required` check on usernameLower passes
 // as long as the caller supplied `username`.
-userSchema.pre("validate", function (next) {
+//
+// Note: Mongoose 8+ no longer passes a `next` callback to pre/post hooks.
+// Hooks are now promise-based, so this function just mutates `this` and
+// returns. (Calling a `next` argument here would throw
+// "TypeError: next is not a function" on save.)
+userSchema.pre("validate", function () {
   if (typeof this.username === "string") {
     this.usernameLower = this.username.trim().toLowerCase();
   }
-  next();
 });
 
 // Strip internal fields (and the password!) from any JSON response.

@@ -567,7 +567,12 @@ app.post("/api/login", async (req, res) => {
 
     res.json({
       message: "Login successful.",
-      user: { id: user.id, name: user.name, email: user.email },
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      },
     });
   } catch (err) {
     console.error("POST /api/login failed:", err);

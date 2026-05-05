@@ -570,12 +570,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ===========================================================================
-// 6) LOGIN PAGE  (demo, localStorage-based)
+// 6) LOGIN PAGE  (calls the backend /api/login)
 // ---------------------------------------------------------------------------
-// We try to match against an account that was created via the signup form.
-// For convenience we also accept the two seeded backend demo users
-// (alice@example.com / bob@example.com with password "password123") so the
-// login flow works even before the user signs up.
+// Sends the email + password to the backend, which checks the bcrypt hash.
+// On success, stores the returned user in localStorage and redirects to the
+// profile page.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("login-form");
@@ -583,6 +582,8 @@ document.addEventListener("DOMContentLoaded", function () {
   const loginPassword = document.getElementById("login-password");
   const loginMessage = document.getElementById("login-message");
   if (!loginForm || !loginEmail || !loginPassword) return;
+
+  const LOGIN_API_URL = "http://localhost:3000/api/login";
 
   function showMsg(text, type) {
     if (!loginMessage) {
@@ -593,24 +594,6 @@ document.addEventListener("DOMContentLoaded", function () {
     loginMessage.classList.remove("is-success", "is-error");
     if (type) loginMessage.classList.add("is-" + type);
   }
-
-  // Fallback "seed" accounts so demo login works without signing up first.
-  const DEMO_ACCOUNTS = [
-    {
-      id: 1,
-      fullName: "Alice Demo",
-      username: "alice",
-      email: "alice@example.com",
-      password: "password123"
-    },
-    {
-      id: 2,
-      fullName: "Bob Demo",
-      username: "bob",
-      email: "bob@example.com",
-      password: "password123"
-    }
-  ];
 
   loginForm.addEventListener("submit", function (event) {
     event.preventDefault();
@@ -623,45 +606,68 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // 1) Look for a user we already created via signup.
-    const allUsers = getAllUsers();
-    let matched = allUsers.find(function (u) {
-      return u.email && u.email.toLowerCase() === email && u.password === password;
-    });
+    showMsg("Logging in\u2026", "info");
 
-    // 2) Fall back to demo accounts.
-    if (!matched) {
-      matched = DEMO_ACCOUNTS.find(function (u) {
-        return u.email.toLowerCase() === email && u.password === password;
+    fetch(LOGIN_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email, password: password })
+    })
+      .then(function (response) {
+        // Always read the JSON body so we can surface the server's error
+        // message verbatim (e.g. "Invalid email or password.").
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) || "Invalid email or password.";
+          showMsg(message, "error");
+          return;
+        }
+
+        const user = (result.data && result.data.user) || {};
+
+        // Save the logged-in user. We keep the field name `fullName` for
+        // the rest of the app, mapping it from the backend's `name` field.
+        setCurrentUser({
+          id: user.id,
+          fullName: user.name,
+          username: user.username,
+          email: user.email
+        });
+        localStorage.setItem("username", user.username);
+
+        showMsg("Login successful! Redirecting\u2026", "success");
+        setTimeout(function () {
+          window.location.href = "profile.html";
+        }, 400);
+      })
+      .catch(function (error) {
+        console.error("POST /api/login failed:", error);
+        showMsg(
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
       });
-    }
-
-    if (!matched) {
-      showMsg("Invalid email or password.", "error");
-      return;
-    }
-
-    // Success: remember the user and head to their profile.
-    setCurrentUser({
-      id: matched.id,
-      fullName: matched.fullName,
-      username: matched.username,
-      email: matched.email
-    });
-
-    showMsg("Login successful! Redirecting…", "success");
-    setTimeout(function () {
-      window.location.href = "profile.html";
-    }, 400);
   });
 });
 
 
 // ===========================================================================
-// 7) SIGNUP PAGE  (demo, localStorage-based)
+// 7) SIGNUP PAGE  (calls the backend /api/signup)
 // ---------------------------------------------------------------------------
-// Saves the new user into the "liveEventUsers" array, simulates a login,
-// and redirects to the profile page so the user can fill in details/hobbies.
+// Sends the new account to the backend, which hashes the password and
+// enforces unique email + unique (case-insensitive) username. On success,
+// stores the returned user in localStorage and redirects to the profile
+// page so the user can fill in details/hobbies.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const signupForm = document.getElementById("signup-form");
@@ -682,6 +688,8 @@ document.addEventListener("DOMContentLoaded", function () {
   ) {
     return;
   }
+
+  const SIGNUP_API_URL = "http://localhost:3000/api/signup";
 
   function showMsg(text, type) {
     if (!signupMessage) {
@@ -723,61 +731,63 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    // Make sure the email/username isn't already taken in localStorage.
-    const allUsers = getAllUsers();
-    const emailTaken = allUsers.some(function (u) {
-      return u.email && u.email.toLowerCase() === email.toLowerCase();
-    });
-    if (emailTaken) {
-      showMsg("That email is already registered. Try logging in.", "error");
-      return;
-    }
-    const usernameTaken = allUsers.some(function (u) {
-      return u.username && u.username.toLowerCase() === username.toLowerCase();
-    });
-    if (usernameTaken) {
-      showMsg("That username is taken. Pick another.", "error");
-      return;
-    }
+    showMsg("Creating account\u2026", "info");
 
-    // Build the new user object. We give them an id that won't collide
-    // with the demo seed users (1, 2).
-    const newUser = {
-      id: Date.now(),
-      fullName: fullName,
-      username: username,
-      email: email,
-      password: password,
-      createdAt: new Date().toISOString()
-    };
+    fetch(SIGNUP_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: fullName,
+        username: username,
+        email: email,
+        password: password
+      })
+    })
+      .then(function (response) {
+        // Always read the JSON body so we can surface the backend's exact
+        // error message (e.g. "Username is already taken.",
+        // "That email is already registered.").
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) || "Could not create account.";
+          showMsg(message, "error");
+          return;
+        }
 
-    allUsers.push(newUser);
-    saveAllUsers(allUsers);
+        const user = (result.data && result.data.user) || {};
 
-    // Pre-fill the profile so the user sees their info on profile.html.
-    const initialProfile = {
-      fullName: fullName,
-      username: username,
-      email: email,
-      school: "",
-      location: "",
-      bio: "",
-      hobbies: []
-    };
-    localStorage.setItem("liveEventProfile", JSON.stringify(initialProfile));
+        // Save the logged-in user. The backend returns `name`, but the
+        // rest of the app uses `fullName` — map it here.
+        setCurrentUser({
+          id: user.id,
+          fullName: user.name,
+          username: user.username,
+          email: user.email
+        });
+        localStorage.setItem("username", user.username);
 
-    // Simulate login and head to the profile page.
-    setCurrentUser({
-      id: newUser.id,
-      fullName: newUser.fullName,
-      username: newUser.username,
-      email: newUser.email
-    });
-
-    showMsg("Account created! Redirecting to your profile…", "success");
-    setTimeout(function () {
-      window.location.href = "profile.html";
-    }, 500);
+        showMsg("Account created! Redirecting to your profile\u2026", "success");
+        setTimeout(function () {
+          window.location.href = "profile.html";
+        }, 500);
+      })
+      .catch(function (error) {
+        console.error("POST /api/signup failed:", error);
+        showMsg(
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+      });
   });
 });
 
@@ -1452,11 +1462,24 @@ document.addEventListener("DOMContentLoaded", function () {
 // Auth: only logged-in users can see this page. If they aren't logged in
 // we redirect to login.html before doing anything else.
 // ===========================================================================
-const OUTGOING_FRIEND_REQUESTS_KEY = "liveEventOutgoingFriendRequests";
+const OUTGOING_FRIEND_REQUESTS_KEY_PREFIX = "liveEventOutgoingFriendRequests";
+
+function getOutgoingFriendRequestsKey() {
+  const currentUser = getCurrentUser();
+  const myUsername =
+    currentUser && currentUser.username
+      ? String(currentUser.username).trim().toLowerCase()
+      : "";
+
+  if (myUsername === "") return null;
+  return OUTGOING_FRIEND_REQUESTS_KEY_PREFIX + ":" + myUsername;
+}
 
 function getOutgoingFriendRequests() {
   try {
-    const raw = localStorage.getItem(OUTGOING_FRIEND_REQUESTS_KEY);
+    const key = getOutgoingFriendRequestsKey();
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch (e) {
@@ -1466,8 +1489,10 @@ function getOutgoingFriendRequests() {
 }
 
 function setOutgoingFriendRequests(list) {
+  const key = getOutgoingFriendRequestsKey();
+  if (!key) return;
   localStorage.setItem(
-    OUTGOING_FRIEND_REQUESTS_KEY,
+    key,
     JSON.stringify(Array.isArray(list) ? list : [])
   );
 }
