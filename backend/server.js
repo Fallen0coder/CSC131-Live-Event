@@ -714,6 +714,74 @@ app.post("/api/rsvp", async (req, res) => {
   }
 });
 
+// GET /api/rsvps/:username
+// Returns the full Event details for every event the given user has
+// RSVP'd to. Useful for "events I'm going to" lists on the profile or
+// events page.
+//
+// How it works (two simple queries, easy to read):
+//   1. Look up the user by username (case-insensitive, via the same
+//      helpers used by the friend routes). 404 if no such user.
+//   2. Find every RSVP record where userId matches this user.
+//   3. Fetch the matching Event documents in one batched query and
+//      return them sorted by date (earliest first).
+//
+// Privacy: this route only returns *event* data (title, date, time,
+// location, category, description, creator username, createdAt). It
+// never exposes the user's password, email, hashed password, or any
+// other private field on the User document.
+app.get("/api/rsvps/:username", async (req, res) => {
+  try {
+    // Normalize the URL parameter so "Alice" and "alice" both work.
+    const username = normalizeUsername(req.params.username);
+    if (!username) {
+      return res.status(400).json({ error: "Invalid username." });
+    }
+
+    // Make sure the user actually exists. We need their ObjectId to
+    // search the RSVP collection (RSVPs link a userId → eventId).
+    const user = await findUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // Step 1: every RSVP this user has made.
+    const rsvps = await RSVP.find({ userId: user._id }).lean();
+    if (rsvps.length === 0) {
+      // No RSVPs yet — return an empty array (NOT a 404). The frontend
+      // can render an "you haven't RSVP'd to anything yet" empty state.
+      return res.json([]);
+    }
+
+    // Step 2: pull the matching events in one batched query. Using $in
+    // is much faster than a loop of individual lookups.
+    const eventIds = rsvps.map((rsvp) => rsvp.eventId);
+    const events = await Event.find({ _id: { $in: eventIds } })
+      .sort({ date: 1 })
+      .lean();
+
+    // .lean() skips the Event model's toJSON transform, so we shape the
+    // public event payload explicitly here. This also doubles as a
+    // whitelist — only fields listed below are ever sent to the client.
+    const safeEvents = events.map((event) => ({
+      id: event._id.toString(),
+      title: event.title || "",
+      date: event.date || "",
+      time: event.time || "",
+      location: event.location || "",
+      category: event.category || "",
+      description: event.description || "",
+      creatorUsername: event.creatorUsername || "",
+      createdAt: event.createdAt || null,
+    }));
+
+    res.json(safeEvents);
+  } catch (err) {
+    console.error("GET /api/rsvps/:username failed:", err);
+    res.status(500).json({ error: "Could not load RSVP'd events." });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Start the server
 // ---------------------------------------------------------------------------

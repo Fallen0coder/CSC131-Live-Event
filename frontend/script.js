@@ -327,6 +327,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   const EVENTS_API_URL = "http://localhost:3000/api/events";
   const RSVP_API_URL = "http://localhost:3000/api/rsvp";
+  // Used to ask the backend "which events has the logged-in user already
+  // RSVP'd to?" so we can pre-mark those buttons as green/disabled
+  // immediately on page load (instead of resetting them to blue every
+  // time the page reloads). See fetchMyRsvpedEventIds() below.
+  const RSVPS_API_URL = "http://localhost:3000/api/rsvps";
 
   // We deliberately do NOT cache the user at page load. The user might log
   // in / out in another tab, so we re-read getCurrentUser() inside sendRsvp
@@ -403,6 +408,40 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
+    // Puts the button into its final "you've RSVP'd" state:
+    //   - text becomes "RSVP'd"
+    //   - the button is disabled so it can't be clicked again
+    //   - the .is-rsvped class swaps the blue gradient for the green one
+    //     (see .rsvp-btn.is-rsvped in style.css)
+    // We share this helper between the success path AND the "already
+    // RSVP'd" path so both end up with the exact same look.
+    function markAsRsvped(button) {
+      button.textContent = "RSVP\u2019d";
+      button.disabled = true;
+      button.classList.add("is-rsvped");
+    }
+
+    // Returns true if the server's message clearly says the user has
+    // already RSVP'd — e.g. "You have already RSVP'd to this event."
+    // We check the text (case-insensitive) so we still do the right
+    // thing if the backend ever changes the HTTP status for this case
+    // (today it returns 200, but a future version might return 409).
+    function looksLikeAlreadyRsvped(message) {
+      if (!message) return false;
+      return String(message).toLowerCase().indexOf("already") !== -1;
+    }
+
+    // Restores the button to its original "click me" state. Used for
+    // genuine errors so the user can try again.
+    function resetRsvpButton(button) {
+      button.disabled = false;
+      button.textContent = "RSVP";
+      button.classList.remove("is-rsvped");
+    }
+
+    // Show a quick "Saving…" hint so the click feels responsive while
+    // the network call is in flight. Disabling the button also prevents
+    // double-clicks (which would otherwise fire two requests).
     rsvpButton.disabled = true;
     rsvpButton.textContent = "Saving\u2026";
 
@@ -416,36 +455,62 @@ document.addEventListener("DOMContentLoaded", function () {
       body: JSON.stringify({ userId: user.id, eventId: event.id })
     })
       .then(function (response) {
-        return response.json().then(function (data) {
-          return { ok: response.ok, data: data };
-        });
+        // Always read the JSON body, even on non-2xx responses, so we
+        // can show the server's exact message and check whether it
+        // looks like an "already RSVP'd" case.
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
       })
       .then(function (result) {
+        const data = result.data || {};
+        // Successful responses include `message`; errors include `error`.
+        // We check both so the helper below works either way.
+        const serverText = data.message || data.error || "";
+
         if (result.ok) {
-          rsvpButton.textContent = "RSVP\u2019d";
-          rsvpButton.disabled = true;
-          rsvpButton.classList.add("is-rsvped");
-          alert(
-            (result.data && result.data.message) || "RSVP successful!"
-          );
-        } else {
-          const message =
-            (result.data && result.data.error) ||
-            "Could not RSVP. Please try again.";
-          alert(message);
-          rsvpButton.disabled = false;
-          rsvpButton.textContent = "RSVP";
+          // Either a brand-new RSVP (HTTP 201) or the backend's
+          // "you have already RSVP'd" response (HTTP 200). Both should
+          // leave the button green and disabled.
+          markAsRsvped(rsvpButton);
+          alert(serverText || "RSVP successful!");
+          return;
         }
+
+        // Defensive: if a future backend change ever returned a non-2xx
+        // status for the "already RSVP'd" case, still mark the button as
+        // RSVP'd (green + disabled) instead of resetting it back to blue.
+        if (looksLikeAlreadyRsvped(serverText)) {
+          markAsRsvped(rsvpButton);
+          alert(serverText);
+          return;
+        }
+
+        // Anything else is a real error — let the user try again.
+        alert(serverText || "Could not RSVP. Please try again.");
+        resetRsvpButton(rsvpButton);
       })
       .catch(function (error) {
+        // Network failure or unexpected JSON parse error. We can't tell
+        // from here whether the user has RSVP'd or not, so the safest
+        // thing is to restore the button so they can retry.
         console.error("RSVP request failed:", error);
         alert("Could not reach the server. Please try again later.");
-        rsvpButton.disabled = false;
-        rsvpButton.textContent = "RSVP";
+        resetRsvpButton(rsvpButton);
       });
   }
 
-  function createEventCard(event) {
+  // `rsvpedEventIds` is an optional Set of event IDs the logged-in user
+  // has already RSVP'd to. When the event we're rendering is in that set,
+  // we render its button in the "RSVP'd" green/disabled state right away
+  // so it stays green across page reloads. Defaults to an empty Set so
+  // older callers/tests that don't pass it still work.
+  function createEventCard(event, rsvpedEventIds) {
     const card = document.createElement("article");
     card.className = "event-card";
 
@@ -507,6 +572,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const rsvpButton = card.querySelector(".rsvp-btn");
     if (rsvpButton) {
+      // If the logged-in user has already RSVP'd to this event (per the
+      // /api/rsvps/:username response loaded once at page load), pre-mark
+      // the button so it shows up green and disabled immediately. This
+      // matches the exact state markAsRsvped() inside sendRsvp() applies
+      // after a successful click — so clicks and reloads look identical.
+      if (
+        rsvpedEventIds &&
+        event.id &&
+        rsvpedEventIds.has(event.id)
+      ) {
+        rsvpButton.textContent = "RSVP\u2019d";
+        rsvpButton.disabled = true;
+        rsvpButton.classList.add("is-rsvped");
+      }
+
       rsvpButton.addEventListener("click", function (clickEvent) {
         clickEvent.preventDefault();
         sendRsvp(rsvpButton, event);
@@ -564,27 +644,86 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  function loadEvents() {
-    showLoadingState();
-    fetch(EVENTS_API_URL)
+  // Loads the set of event IDs the *currently logged-in user* has already
+  // RSVP'd to (via GET /api/rsvps/:username) so the events page can show
+  // those buttons in the green "RSVP'd" state right away — even after a
+  // page reload.
+  //
+  // This helper is intentionally forgiving: it ALWAYS resolves to a Set
+  // (never rejects), so any of the following scenarios just leave us
+  // with an empty Set and the events page still loads normally:
+  //   - the user isn't logged in
+  //   - the backend doesn't know this user yet (404)
+  //   - the backend is unreachable / returns an error
+  function fetchMyRsvpedEventIds() {
+    const user = getCurrentUser();
+    if (!user || !user.username) {
+      return Promise.resolve(new Set());
+    }
+
+    const url = RSVPS_API_URL + "/" + encodeURIComponent(user.username);
+
+    return fetch(url)
       .then(function (response) {
+        // 404 just means there's no backend record for this username
+        // (e.g. signed up only on the frontend). Treat as "no RSVPs".
+        if (response.status === 404) return [];
         if (!response.ok) {
           throw new Error("Request failed with status " + response.status);
         }
         return response.json();
       })
       .then(function (events) {
+        const ids = new Set();
+        if (Array.isArray(events)) {
+          events.forEach(function (event) {
+            if (event && event.id) ids.add(event.id);
+          });
+        }
+        return ids;
+      })
+      .catch(function (error) {
+        // Don't block the page — just log and pretend the user has no
+        // RSVPs yet. The button click flow will still work normally
+        // because sendRsvp() is wired up regardless.
+        console.warn("Could not load my RSVPs:", error);
+        return new Set();
+      });
+  }
+
+  function loadEvents() {
+    showLoadingState();
+
+    // Fetch the event list AND the user's already-RSVP'd event IDs in
+    // parallel, then render once both are ready. Doing this in parallel
+    // (instead of one after the other) keeps the page snappy.
+    const eventsPromise = fetch(EVENTS_API_URL).then(function (response) {
+      if (!response.ok) {
+        throw new Error("Request failed with status " + response.status);
+      }
+      return response.json();
+    });
+    const rsvpsPromise = fetchMyRsvpedEventIds();
+
+    Promise.all([eventsPromise, rsvpsPromise])
+      .then(function (results) {
+        const events = results[0];
+        const rsvpedEventIds = results[1];
+
         eventsContainer.innerHTML = "";
         if (!Array.isArray(events) || events.length === 0) {
           showEmptyState();
           return;
         }
         events.forEach(function (event) {
-          const card = createEventCard(event);
+          const card = createEventCard(event, rsvpedEventIds);
           eventsContainer.appendChild(card);
         });
       })
       .catch(function (error) {
+        // We only land here if the events fetch itself failed —
+        // fetchMyRsvpedEventIds() never rejects. Show the standard
+        // error state so the user can retry.
         console.error("Failed to load events:", error);
         showErrorState();
       });
