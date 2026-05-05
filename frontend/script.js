@@ -2197,6 +2197,159 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ===========================================================================
+// 8d) PROFILE PAGE: My RSVP'd events
+// ---------------------------------------------------------------------------
+// Replaces the old hard-coded "Saved events" + "Attended events" placeholder
+// rows on profile.html with real data from the backend.
+//
+// Data flow:
+//   1. Read the logged-in user from localStorage (via getCurrentUser()).
+//   2. Fetch GET http://localhost:3000/api/rsvps/:username.
+//   3. Render one row per event (title + date · time · location), or
+//      show "No RSVP'd events yet." for the empty state.
+//
+// Because we always fetch from the backend on page load, canceling an
+// RSVP from the Events page (which calls DELETE /api/rsvp) will remove
+// the event from this list on the next refresh — no client-side cache
+// to keep in sync.
+// ===========================================================================
+document.addEventListener("DOMContentLoaded", function () {
+  const listEl = document.getElementById("rsvped-events-list");
+  if (!listEl) return; // Only the profile page has this container.
+
+  const RSVPS_API_URL = "http://localhost:3000/api/rsvps";
+
+  // Replace the contents of the list with a single status paragraph
+  // (used for "Loading…", "No RSVP'd events yet.", login-required, and
+  // error states). Styling lives in style.css → .profile-rsvp-empty.
+  function setStatusMessage(text) {
+    listEl.innerHTML = "";
+    const p = document.createElement("p");
+    p.className = "profile-rsvp-empty";
+    p.textContent = text;
+    listEl.appendChild(p);
+  }
+
+  // Friendly date string. Falls back to the raw input if it can't
+  // parse so we never display "Invalid Date".
+  function formatRsvpDate(dateString) {
+    if (!dateString) return "";
+    const parsed = new Date(dateString);
+    if (isNaN(parsed.getTime())) return dateString;
+    return parsed.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric"
+    });
+  }
+
+  // Friendly 12-hour time string (e.g. "7:30 PM"). Accepts both
+  // "HH:MM" strings and full ISO timestamps. Falls back to the raw
+  // input on failure.
+  function formatRsvpTime(timeString) {
+    if (!timeString) return "";
+    const shortMatch = /^(\d{1,2}):(\d{2})/.exec(timeString);
+    if (shortMatch) {
+      const hour = Number(shortMatch[1]);
+      const minute = Number(shortMatch[2]);
+      const date = new Date();
+      date.setHours(hour, minute, 0, 0);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString(undefined, {
+          hour: "numeric",
+          minute: "2-digit"
+        });
+      }
+    }
+    return timeString;
+  }
+
+  // Build one row that visually matches the profile page's existing
+  // .event-placeholder-item style (so this section blends in with the
+  // rest of the profile cards). Uses textContent everywhere so any
+  // user-supplied text is safe from XSS.
+  function buildEventRow(event) {
+    const item = document.createElement("div");
+    item.className = "event-placeholder-item";
+
+    const icon = document.createElement("span");
+    icon.className = "event-placeholder-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "\u2605"; // ★
+
+    const text = document.createElement("div");
+
+    const title = document.createElement("p");
+    title.className = "event-placeholder-title";
+    title.textContent = event.title || "Untitled event";
+
+    // Build "Date · Time · Location" from whichever pieces exist.
+    const meta = document.createElement("p");
+    meta.className = "event-placeholder-meta";
+    const parts = [];
+    const dateText = formatRsvpDate(event.date);
+    const timeText = formatRsvpTime(event.time);
+    if (dateText) parts.push(dateText);
+    if (timeText) parts.push(timeText);
+    if (event.location) parts.push(event.location);
+    meta.textContent = parts.join(" \u00b7 ") || "Details to be announced";
+
+    text.appendChild(title);
+    text.appendChild(meta);
+    item.appendChild(icon);
+    item.appendChild(text);
+    return item;
+  }
+
+  function renderEvents(events) {
+    listEl.innerHTML = "";
+    if (!events || events.length === 0) {
+      setStatusMessage("No RSVP\u2019d events yet.");
+      return;
+    }
+    events.forEach(function (event) {
+      listEl.appendChild(buildEventRow(event));
+    });
+  }
+
+  // ---- Initial fetch ------------------------------------------------------
+
+  setStatusMessage("Loading your RSVP\u2019d events\u2026");
+
+  const user = getCurrentUser();
+  if (!user || !user.username) {
+    // Not logged in — keep the section visible but show a friendly hint
+    // instead of trying to call the API with an empty username.
+    setStatusMessage("Log in to see your RSVP\u2019d events.");
+    return;
+  }
+
+  const url = RSVPS_API_URL + "/" + encodeURIComponent(user.username);
+
+  fetch(url)
+    .then(function (response) {
+      // Treat 404 (user not found server-side) as an empty list rather
+      // than as an error, so the UI stays calm if a user record is
+      // missing for any reason.
+      if (response.status === 404) return [];
+      if (!response.ok) {
+        throw new Error("Server responded " + response.status);
+      }
+      return response.json();
+    })
+    .then(function (events) {
+      renderEvents(Array.isArray(events) ? events : []);
+    })
+    .catch(function (err) {
+      console.error("Could not load RSVP'd events:", err);
+      setStatusMessage(
+        "Could not load your RSVP\u2019d events. Please try again later."
+      );
+    });
+});
+
+
+// ===========================================================================
 // 9) SETTINGS PAGE
 // ---------------------------------------------------------------------------
 // All toggles persist to localStorage. Theme buttons highlight whichever

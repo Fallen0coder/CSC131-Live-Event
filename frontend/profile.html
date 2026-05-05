@@ -204,45 +204,24 @@
         </div>
       </section>
 
-      <!-- Saved events placeholder -->
-      <section class="profile-card-block" aria-labelledby="saved-heading">
-        <h3 id="saved-heading">Saved events</h3>
-        <div class="event-placeholder-list">
-          <div class="event-placeholder-item">
-            <span class="event-placeholder-icon" aria-hidden="true">★</span>
-            <div>
-              <p class="event-placeholder-title">Night Market &amp; Live DJs</p>
-              <p class="event-placeholder-meta">Sat, May 3 · Student Union Plaza</p>
-            </div>
-          </div>
-          <div class="event-placeholder-item">
-            <span class="event-placeholder-icon" aria-hidden="true">★</span>
-            <div>
-              <p class="event-placeholder-title">48-Hour Build Sprint</p>
-              <p class="event-placeholder-meta">Fri, May 9 · Innovation Studio</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Attended events placeholder -->
-      <section class="profile-card-block" aria-labelledby="attended-heading">
-        <h3 id="attended-heading">Events you've attended</h3>
-        <div class="event-placeholder-list">
-          <div class="event-placeholder-item">
-            <span class="event-placeholder-icon" aria-hidden="true">✓</span>
-            <div>
-              <p class="event-placeholder-title">Spring Welcome Mixer</p>
-              <p class="event-placeholder-meta">Jan 24 · Library Atrium</p>
-            </div>
-          </div>
-          <div class="event-placeholder-item">
-            <span class="event-placeholder-icon" aria-hidden="true">✓</span>
-            <div>
-              <p class="event-placeholder-title">Career Coffee Chats</p>
-              <p class="event-placeholder-meta">Feb 11 · The Commons</p>
-            </div>
-          </div>
+      <!--
+        My RSVP'd events: real data from GET /api/rsvps/:username.
+        The container starts with a small "Loading…" message; the JS
+        in script.js (Section 8d) fetches the user's RSVP'd events and
+        replaces the contents with either a list of events or an
+        empty-state / error message. If the user cancels an RSVP from
+        the Events page, that event is removed from this list on the
+        next page load (because the data comes straight from the
+        backend instead of being cached on the client).
+      -->
+      <section class="profile-card-block" aria-labelledby="rsvped-heading">
+        <h3 id="rsvped-heading">My RSVP'd events</h3>
+        <div
+          id="rsvped-events-list"
+          class="event-placeholder-list profile-rsvp-list"
+          aria-live="polite"
+        >
+          <p class="profile-rsvp-status">Loading your RSVP&rsquo;d events&hellip;</p>
         </div>
       </section>
 

@@ -1717,6 +1717,28 @@ body.theme-dark .theme-option.is-selected {
   font-size: 0.88rem;
 }
 
+/* Status message used inside #rsvped-events-list on profile.html for
+   "Loading…", "No RSVP'd events yet.", login-required, and error
+   states. Mirrors the friend-empty card style so empty states across
+   the app feel consistent. */
+.profile-rsvp-status,
+.profile-rsvp-empty {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 0.95rem;
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px dashed var(--color-border);
+}
+
+body.theme-dark .profile-rsvp-status,
+body.theme-dark .profile-rsvp-empty {
+  background: rgba(15, 23, 42, 0.4);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
 /* The chip "pill" used to display selected hobbies on the profile */
 .hobby-pill {
   display: inline-flex;
