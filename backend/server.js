@@ -714,6 +714,48 @@ app.post("/api/rsvp", async (req, res) => {
   }
 });
 
+// DELETE /api/rsvp
+// Cancels an existing RSVP. Body: { userId, eventId } — same shape as
+// POST /api/rsvp so the frontend only has to swap the HTTP method.
+//
+// This route is intentionally idempotent: if there's no matching RSVP
+// to delete, we still respond with 200 success. That way the UI ends up
+// in the "not RSVP'd" state regardless, and a user double-clicking the
+// Cancel button can never get stuck on a confusing error.
+app.delete("/api/rsvp", async (req, res) => {
+  try {
+    const { userId, eventId } = req.body || {};
+
+    if (!userId || !eventId) {
+      return res
+        .status(400)
+        .json({ error: "Please provide userId and eventId." });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(userId) ||
+      !mongoose.Types.ObjectId.isValid(eventId)
+    ) {
+      return res.status(400).json({ error: "Invalid userId or eventId." });
+    }
+
+    // deleteOne returns { acknowledged, deletedCount }. We treat 0 and 1
+    // both as success — see the comment above about idempotence.
+    const result = await RSVP.deleteOne({ userId, eventId });
+
+    if (result.deletedCount === 0) {
+      return res
+        .status(200)
+        .json({ message: "No RSVP to cancel — already removed." });
+    }
+
+    res.json({ message: "RSVP canceled." });
+  } catch (err) {
+    console.error("DELETE /api/rsvp failed:", err);
+    res.status(500).json({ error: "Could not cancel RSVP." });
+  }
+});
+
 // GET /api/rsvps/:username
 // Returns the full Event details for every event the given user has
 // RSVP'd to. Useful for "events I'm going to" lists on the profile or

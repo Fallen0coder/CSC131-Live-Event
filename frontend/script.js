@@ -333,6 +333,51 @@ document.addEventListener("DOMContentLoaded", function () {
   // time the page reloads). See fetchMyRsvpedEventIds() below.
   const RSVPS_API_URL = "http://localhost:3000/api/rsvps";
 
+  // -------------------------------------------------------------------------
+  // In-page banner (replaces alert() popups for RSVP feedback).
+  // The element lives in events.html; we only manipulate it from JS here.
+  // -------------------------------------------------------------------------
+  const eventsBanner = document.getElementById("events-banner");
+  let eventsBannerHideTimer = null;
+
+  // Show a status message at the top of the events page. `type` controls
+  // the color: "success" (green), "error" (red), or "info" (blue). The
+  // banner auto-hides after 4 seconds. Calling this again before the
+  // timer expires replaces the message and resets the timer.
+  function showEventsBanner(message, type) {
+    if (!eventsBanner) {
+      // Fallback so messages aren't silently dropped if the markup is
+      // missing for some reason.
+      console.log("[events banner]", type || "info", message);
+      return;
+    }
+
+    if (eventsBannerHideTimer) {
+      clearTimeout(eventsBannerHideTimer);
+      eventsBannerHideTimer = null;
+    }
+
+    eventsBanner.textContent = message || "";
+
+    eventsBanner.classList.remove("is-success", "is-error", "is-info");
+    if (type) {
+      eventsBanner.classList.add("is-" + type);
+    }
+
+    // Force the entrance animation to replay every time we show a
+    // banner, even if a previous banner is still visible. The double
+    // toggle + reflow trick reliably restarts the CSS animation so the
+    // user notices the new message.
+    eventsBanner.classList.add("is-hidden");
+    void eventsBanner.offsetWidth;
+    eventsBanner.classList.remove("is-hidden");
+
+    eventsBannerHideTimer = setTimeout(function () {
+      eventsBanner.classList.add("is-hidden");
+      eventsBannerHideTimer = null;
+    }, 4000);
+  }
+
   // We deliberately do NOT cache the user at page load. The user might log
   // in / out in another tab, so we re-read getCurrentUser() inside sendRsvp
   // every time the button is clicked. See sendRsvp() below.
@@ -397,111 +442,187 @@ document.addEventListener("DOMContentLoaded", function () {
     return category.charAt(0).toUpperCase() + category.slice(1);
   }
 
+  // -------------------------------------------------------------------------
+  // RSVP button click flow
+  //
+  // The RSVP button has TWO roles depending on its current visual state:
+  //   • Blue "RSVP"   → clicking SAVES a new RSVP via POST /api/rsvp
+  //   • Green "RSVP'd" → clicking CANCELS via DELETE /api/rsvp
+  //
+  // We tell the two states apart with the .is-rsvped CSS class (the same
+  // class that swaps the gradient from blue to green in style.css). The
+  // top-level sendRsvp() function is just a small router that picks
+  // saveRsvp() or cancelRsvp() based on which state the button is in.
+  // -------------------------------------------------------------------------
+
+  // Puts the button into the green "RSVP'd" state. Stays ENABLED so the
+  // user can click it again to cancel — that's how we add cancel support
+  // without a separate Cancel button. We share this helper between the
+  // initial page-load pre-marking, the save-success path, and the
+  // already-RSVP'd path so they all end up looking identical.
+  function markAsRsvped(button) {
+    button.textContent = "RSVP\u2019d";
+    button.disabled = false;
+    button.classList.add("is-rsvped");
+  }
+
+  // Restores the button to the blue "RSVP" state. Used after a successful
+  // cancel and after genuine save errors (so the user can try again).
+  function resetRsvpButton(button) {
+    button.disabled = false;
+    button.textContent = "RSVP";
+    button.classList.remove("is-rsvped");
+  }
+
+  // Tiny in-flight indicator. Disable the button to block double-clicks
+  // and show a transient label like "Saving…" or "Canceling…".
+  function setRsvpInFlight(button, text) {
+    button.disabled = true;
+    button.textContent = text;
+  }
+
+  // Returns true if the server's message clearly says the user has
+  // already RSVP'd — e.g. "You have already RSVP'd to this event."
+  // We check the text (case-insensitive) so we still do the right
+  // thing if the backend ever changes the HTTP status for this case
+  // (today it returns 200, but a future version might return 409).
+  function looksLikeAlreadyRsvped(message) {
+    if (!message) return false;
+    return String(message).toLowerCase().indexOf("already") !== -1;
+  }
+
+  // Reads a fetch Response into { ok, data } without throwing on bodies
+  // that aren't valid JSON. Used by both saveRsvp and cancelRsvp.
+  function readRsvpResponse(response) {
+    return response
+      .json()
+      .then(function (data) {
+        return { ok: response.ok, data: data };
+      })
+      .catch(function () {
+        return { ok: response.ok, data: {} };
+      });
+  }
+
+  // Top-level click handler wired up in createEventCard(). Always re-reads
+  // the logged-in user at click time so we react to fresh logins/logouts
+  // (including from another tab). Then delegates to save vs cancel.
   function sendRsvp(rsvpButton, event) {
-    // Always look up the logged-in user at click time so we react to fresh
-    // logins/logouts (including from other tabs). The user object lives in
-    // localStorage under the "liveEventCurrentUser" key — see the
-    // setCurrentUser() / getCurrentUser() helpers near the top of this file.
     const user = getCurrentUser();
     if (!user || !user.id) {
-      alert("You must be logged in to RSVP.");
+      showEventsBanner("Please log in to RSVP.", "error");
       return;
     }
 
-    // Puts the button into its final "you've RSVP'd" state:
-    //   - text becomes "RSVP'd"
-    //   - the button is disabled so it can't be clicked again
-    //   - the .is-rsvped class swaps the blue gradient for the green one
-    //     (see .rsvp-btn.is-rsvped in style.css)
-    // We share this helper between the success path AND the "already
-    // RSVP'd" path so both end up with the exact same look.
-    function markAsRsvped(button) {
-      button.textContent = "RSVP\u2019d";
-      button.disabled = true;
-      button.classList.add("is-rsvped");
+    if (rsvpButton.classList.contains("is-rsvped")) {
+      cancelRsvp(rsvpButton, event, user);
+    } else {
+      saveRsvp(rsvpButton, event, user);
     }
+  }
 
-    // Returns true if the server's message clearly says the user has
-    // already RSVP'd — e.g. "You have already RSVP'd to this event."
-    // We check the text (case-insensitive) so we still do the right
-    // thing if the backend ever changes the HTTP status for this case
-    // (today it returns 200, but a future version might return 409).
-    function looksLikeAlreadyRsvped(message) {
-      if (!message) return false;
-      return String(message).toLowerCase().indexOf("already") !== -1;
-    }
+  // POST /api/rsvp — saves a brand-new RSVP. On success the button turns
+  // green and a "You RSVP'd to this event!" banner pops up. On error the
+  // button reverts so the user can try again.
+  function saveRsvp(rsvpButton, event, user) {
+    setRsvpInFlight(rsvpButton, "Saving\u2026");
 
-    // Restores the button to its original "click me" state. Used for
-    // genuine errors so the user can try again.
-    function resetRsvpButton(button) {
-      button.disabled = false;
-      button.textContent = "RSVP";
-      button.classList.remove("is-rsvped");
-    }
-
-    // Show a quick "Saving…" hint so the click feels responsive while
-    // the network call is in flight. Disabling the button also prevents
-    // double-clicks (which would otherwise fire two requests).
-    rsvpButton.disabled = true;
-    rsvpButton.textContent = "Saving\u2026";
-
-    // Send BOTH userId (the real Mongo ObjectId of the logged-in user) and
-    // eventId (the Mongo ObjectId of the card the user clicked, supplied
-    // by the backend in GET /api/events). The backend route at
-    // POST /api/rsvp validates that both IDs exist before saving.
     fetch(RSVP_API_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id, eventId: event.id })
     })
-      .then(function (response) {
-        // Always read the JSON body, even on non-2xx responses, so we
-        // can show the server's exact message and check whether it
-        // looks like an "already RSVP'd" case.
-        return response
-          .json()
-          .then(function (data) {
-            return { ok: response.ok, data: data };
-          })
-          .catch(function () {
-            return { ok: response.ok, data: {} };
-          });
-      })
+      .then(readRsvpResponse)
       .then(function (result) {
         const data = result.data || {};
-        // Successful responses include `message`; errors include `error`.
-        // We check both so the helper below works either way.
         const serverText = data.message || data.error || "";
 
         if (result.ok) {
-          // Either a brand-new RSVP (HTTP 201) or the backend's
-          // "you have already RSVP'd" response (HTTP 200). Both should
-          // leave the button green and disabled.
+          // Either a brand-new RSVP (HTTP 201) or the backend's "you have
+          // already RSVP'd" response (HTTP 200). Both should end up green.
           markAsRsvped(rsvpButton);
-          alert(serverText || "RSVP successful!");
+          if (looksLikeAlreadyRsvped(serverText)) {
+            showEventsBanner(
+              "You\u2019re already RSVP\u2019d to this event.",
+              "info"
+            );
+          } else {
+            showEventsBanner("You RSVP\u2019d to this event!", "success");
+          }
           return;
         }
 
         // Defensive: if a future backend change ever returned a non-2xx
-        // status for the "already RSVP'd" case, still mark the button as
-        // RSVP'd (green + disabled) instead of resetting it back to blue.
+        // status for the already-RSVP'd case, still end up green.
         if (looksLikeAlreadyRsvped(serverText)) {
           markAsRsvped(rsvpButton);
-          alert(serverText);
+          showEventsBanner(
+            "You\u2019re already RSVP\u2019d to this event.",
+            "info"
+          );
           return;
         }
 
-        // Anything else is a real error — let the user try again.
-        alert(serverText || "Could not RSVP. Please try again.");
+        // Anything else is a real error — reset and let the user try again.
         resetRsvpButton(rsvpButton);
+        showEventsBanner(
+          serverText || "Something went wrong. Please try again.",
+          "error"
+        );
       })
       .catch(function (error) {
         // Network failure or unexpected JSON parse error. We can't tell
-        // from here whether the user has RSVP'd or not, so the safest
-        // thing is to restore the button so they can retry.
-        console.error("RSVP request failed:", error);
-        alert("Could not reach the server. Please try again later.");
+        // from here whether the RSVP was saved or not, so the safest
+        // thing is to restore the button so the user can retry.
+        console.error("RSVP save failed:", error);
         resetRsvpButton(rsvpButton);
+        showEventsBanner(
+          "Something went wrong. Please try again.",
+          "error"
+        );
+      });
+  }
+
+  // DELETE /api/rsvp — cancels the user's RSVP for this event. On success
+  // the button turns blue again. On error the button stays green so the
+  // user can retry the cancellation.
+  function cancelRsvp(rsvpButton, event, user) {
+    setRsvpInFlight(rsvpButton, "Canceling\u2026");
+
+    fetch(RSVP_API_URL, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, eventId: event.id })
+    })
+      .then(readRsvpResponse)
+      .then(function (result) {
+        const data = result.data || {};
+        const serverText = data.message || data.error || "";
+
+        if (result.ok) {
+          // The backend treats both "found and deleted" and "nothing to
+          // delete" as success (it's idempotent). Either way we end up
+          // with no RSVP, so we revert to the blue button.
+          resetRsvpButton(rsvpButton);
+          showEventsBanner("Your RSVP was canceled.", "success");
+          return;
+        }
+
+        // Real error — keep the button green so the user can try again.
+        markAsRsvped(rsvpButton);
+        showEventsBanner(
+          serverText || "Something went wrong. Please try again.",
+          "error"
+        );
+      })
+      .catch(function (error) {
+        console.error("RSVP cancel failed:", error);
+        // Same reasoning as above — keep it green so the click can retry.
+        markAsRsvped(rsvpButton);
+        showEventsBanner(
+          "Something went wrong. Please try again.",
+          "error"
+        );
       });
   }
 
@@ -574,17 +695,17 @@ document.addEventListener("DOMContentLoaded", function () {
     if (rsvpButton) {
       // If the logged-in user has already RSVP'd to this event (per the
       // /api/rsvps/:username response loaded once at page load), pre-mark
-      // the button so it shows up green and disabled immediately. This
-      // matches the exact state markAsRsvped() inside sendRsvp() applies
-      // after a successful click — so clicks and reloads look identical.
+      // the button so it shows up green immediately. We deliberately
+      // leave it ENABLED — clicking it again now CANCELS the RSVP via
+      // DELETE /api/rsvp (handled inside sendRsvp → cancelRsvp). This
+      // matches the exact state markAsRsvped() applies after a click,
+      // so clicks and reloads look identical.
       if (
         rsvpedEventIds &&
         event.id &&
         rsvpedEventIds.has(event.id)
       ) {
-        rsvpButton.textContent = "RSVP\u2019d";
-        rsvpButton.disabled = true;
-        rsvpButton.classList.add("is-rsvped");
+        markAsRsvped(rsvpButton);
       }
 
       rsvpButton.addEventListener("click", function (clickEvent) {
