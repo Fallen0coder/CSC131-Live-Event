@@ -1539,6 +1539,14 @@ body.theme-dark .events-banner.is-info {
   color: #c7d2fe;
 }
 
+/* Hover border for user search / friend cards on the dark theme.
+   The light-mode rule uses #c7d2fe which clashes with dark surfaces;
+   here we use a softer translucent indigo that matches the rest of
+   the dark UI. */
+body.theme-dark .user-result-card:hover {
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
 body.theme-dark .events-state.is-error {
   background: rgba(127, 29, 29, 0.18);
   border-color: rgba(248, 113, 113, 0.4);
@@ -2178,17 +2186,27 @@ body.is-editing-profile .profile-display-only {
   color: #b91c1c;
 }
 
+/* Results list: one full-width card per row.
+   We deliberately do NOT use a multi-column grid here. With a 48px
+   avatar + button + padding, multi-column cards squeeze the middle
+   text column so much that long usernames break letter-by-letter
+   ("stacked letters"). One card per row gives every card enough
+   horizontal room for clean single-line names/usernames. */
 .user-search-results {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 0.85rem;
 }
 
+/* Each card is a horizontal row:
+     [Avatar] · [Name + @handle stacked] · [Action button]
+   align-items: center vertically aligns those three blocks so the
+   button lines up with the middle of the text stack. */
 .user-result-card {
   display: flex;
-  gap: 0.85rem;
-  align-items: flex-start;
-  padding: 0.95rem 1rem;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.95rem 1.1rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -2202,6 +2220,9 @@ body.is-editing-profile .profile-display-only {
   border-color: #c7d2fe;
 }
 
+/* Profile circle on the left. flex: 0 0 auto keeps it at a fixed size
+   no matter how cramped the card gets (so it never shrinks into an
+   oval and never gets pushed off the row). */
 .user-result-avatar {
   flex: 0 0 auto;
   width: 48px;
@@ -2224,34 +2245,61 @@ body.is-editing-profile .profile-display-only {
   display: block;
 }
 
+/* Middle text column.
+   IMPORTANT: min-width: 0 lets this flex child shrink below its
+   intrinsic content width — without it, the text-overflow: ellipsis
+   on .user-result-name / .user-result-handle below would never
+   trigger because the column would just push the card wider. */
 .user-result-info {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
 }
 
+/* Name: bold + larger, on a single line. Long names truncate
+   with "…" instead of breaking into individual letters. */
 .user-result-name {
   font-weight: 700;
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: var(--color-text);
-  margin: 0 0 0.1rem;
-  word-break: break-word;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* @username: smaller and muted, also single-line + ellipsis. */
 .user-result-handle {
   color: var(--color-muted);
-  font-size: 0.88rem;
-  margin: 0 0 0.35rem;
-  word-break: break-word;
+  font-size: 0.9rem;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
+/* Bio: allowed to wrap onto multiple lines, but clamped to 2 lines
+   so a long bio can't dominate the card. overflow-wrap: anywhere
+   only breaks inside words as a last resort (e.g. an unbreakably
+   long URL), instead of word-break: break-word's habit of breaking
+   normal words mid-letter on narrow columns. */
 .user-result-bio {
   color: var(--color-text);
   font-size: 0.9rem;
   line-height: 1.45;
-  margin: 0;
-  word-break: break-word;
+  margin: 0.35rem 0 0;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
+/* Action button column on the right. flex: 0 0 auto keeps the button
+   at its natural width so the middle text column gets all leftover
+   space. */
 .user-result-actions {
   flex: 0 0 auto;
   align-self: center;
