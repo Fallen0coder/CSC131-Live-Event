@@ -3002,3 +3002,128 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   });
 });
+
+
+// ===========================================================================
+// 11) PASSWORD UX HELPERS  (login + signup pages)
+// ---------------------------------------------------------------------------
+// Three small features wired up here:
+//   a) Eye toggle buttons that show/hide any password field. The button
+//      element has `data-password-toggle="<input id>"` in the HTML.
+//   b) A live strength meter under the signup password field.
+//   c) A "passwords match / do not match" message under the confirm field.
+//
+// All of this is purely UI — it does NOT touch the existing /api/login or
+// /api/signup fetch logic in sections 6 and 7.
+// ===========================================================================
+document.addEventListener("DOMContentLoaded", function () {
+  // ---- (a) Eye show/hide buttons --------------------------------------
+  // Find every button on the page that opted in via data-password-toggle.
+  // Works on login.html and signup.html without any per-page setup.
+  const toggleButtons = document.querySelectorAll("[data-password-toggle]");
+  toggleButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      // The button stores the id of the input it controls.
+      const targetId = btn.getAttribute("data-password-toggle");
+      const input = document.getElementById(targetId);
+      if (!input) return;
+
+      // Flip the input type between "password" (hidden) and "text" (visible).
+      const isHidden = input.type === "password";
+      input.type = isHidden ? "text" : "password";
+
+      // Swap the icon + accessible label so screen readers stay in sync.
+      const iconEl = btn.querySelector(".password-toggle-icon");
+      if (iconEl) {
+        iconEl.textContent = isHidden ? "🙈" : "👁️";
+      }
+      btn.setAttribute(
+        "aria-label",
+        isHidden ? "Hide password" : "Show password"
+      );
+      btn.setAttribute("aria-pressed", isHidden ? "true" : "false");
+    });
+  });
+
+  // ---- (b) Signup password strength meter -----------------------------
+  const signupPassword = document.getElementById("signup-password");
+  const strengthEl = document.getElementById("password-strength");
+  const strengthLabelEl = strengthEl
+    ? strengthEl.querySelector(".password-strength-label")
+    : null;
+
+  // Returns one of "", "weak", "medium", "strong" based on five rules:
+  // length>=8, uppercase, lowercase, number, special character.
+  function calcStrength(pw) {
+    if (!pw) return "";
+    let score = 0;
+    if (pw.length >= 8) score++;
+    if (/[A-Z]/.test(pw)) score++;
+    if (/[a-z]/.test(pw)) score++;
+    if (/[0-9]/.test(pw)) score++;
+    if (/[^A-Za-z0-9]/.test(pw)) score++;
+
+    if (score <= 2) return "weak";
+    if (score <= 4) return "medium";
+    return "strong";
+  }
+
+  if (signupPassword && strengthEl && strengthLabelEl) {
+    signupPassword.addEventListener("input", function () {
+      const level = calcStrength(signupPassword.value);
+
+      // Reset modifier classes, then add the current one (if any).
+      strengthEl.classList.remove(
+        "is-active",
+        "is-weak",
+        "is-medium",
+        "is-strong"
+      );
+
+      if (level === "") {
+        // Empty input — hide the meter entirely.
+        strengthLabelEl.textContent = "";
+      } else {
+        strengthEl.classList.add("is-active", "is-" + level);
+        if (level === "weak") strengthLabelEl.textContent = "Weak password";
+        if (level === "medium") strengthLabelEl.textContent = "Medium strength";
+        if (level === "strong") strengthLabelEl.textContent = "Strong password";
+      }
+
+      // Re-check the match message too, in case the user edited the
+      // password after typing the confirm field.
+      updateMatchMessage();
+    });
+  }
+
+  // ---- (c) Confirm-password match message -----------------------------
+  const confirmPassword = document.getElementById("signup-confirm");
+  const matchEl = document.getElementById("password-match");
+
+  function updateMatchMessage() {
+    if (!signupPassword || !confirmPassword || !matchEl) return;
+
+    const pw = signupPassword.value;
+    const confirm = confirmPassword.value;
+
+    matchEl.classList.remove("is-match", "is-mismatch");
+
+    // Stay quiet until the user has actually started typing in confirm.
+    if (confirm === "") {
+      matchEl.textContent = "";
+      return;
+    }
+
+    if (pw === confirm) {
+      matchEl.classList.add("is-match");
+      matchEl.textContent = "Passwords match.";
+    } else {
+      matchEl.classList.add("is-mismatch");
+      matchEl.textContent = "Passwords do not match.";
+    }
+  }
+
+  if (confirmPassword) {
+    confirmPassword.addEventListener("input", updateMatchMessage);
+  }
+});

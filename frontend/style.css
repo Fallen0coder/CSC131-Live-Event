@@ -988,6 +988,174 @@ body.theme-dark .event-creator strong {
   text-decoration: underline;
 }
 
+/* ——— Password field with show/hide eye toggle ——— */
+/* Wraps the <input> + the eye <button> so the button can be positioned
+   inside the right edge of the input. Used on login + signup pages. */
+.password-wrapper {
+  position: relative;
+  display: block;
+}
+
+/* Reserve room on the right of the input so the typed text never slides
+   underneath the eye button. */
+.password-wrapper input {
+  padding-right: 2.75rem;
+}
+
+/* The eye toggle button itself. Sits absolutely-positioned inside the
+   input. type="button" in the HTML keeps it from submitting the form. */
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.4rem;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 1.05rem;
+  line-height: 1;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.password-toggle:hover {
+  background-color: rgba(37, 99, 235, 0.08);
+  color: #1f2937;
+}
+
+.password-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.4);
+}
+
+.password-toggle-icon {
+  display: inline-block;
+  pointer-events: none;
+}
+
+/* ——— Password strength meter (signup only) ——— */
+.password-strength {
+  margin-top: 0.55rem;
+  display: none; /* JS adds .is-active once the user types */
+}
+
+.password-strength.is-active {
+  display: block;
+}
+
+.password-strength-bar {
+  width: 100%;
+  height: 6px;
+  background-color: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.password-strength-bar-fill {
+  height: 100%;
+  width: 0%;
+  background-color: #9ca3af;
+  border-radius: inherit;
+  transition: width 0.2s ease, background-color 0.2s ease;
+}
+
+.password-strength-label {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.password-strength.is-weak .password-strength-bar-fill {
+  width: 33%;
+  background-color: #dc2626;
+}
+.password-strength.is-weak .password-strength-label {
+  color: #b91c1c;
+}
+
+.password-strength.is-medium .password-strength-bar-fill {
+  width: 66%;
+  background-color: #f59e0b;
+}
+.password-strength.is-medium .password-strength-label {
+  color: #b45309;
+}
+
+.password-strength.is-strong .password-strength-bar-fill {
+  width: 100%;
+  background-color: #16a34a;
+}
+.password-strength.is-strong .password-strength-label {
+  color: #15803d;
+}
+
+/* Helper text under the strength meter, e.g. the rules tip. */
+.password-hint {
+  margin-top: 0.4rem;
+  font-size: 0.8rem;
+  color: #6b7280;
+  line-height: 1.35;
+}
+
+/* Confirm-password match message. Empty by default; JS adds the modifier
+   class + text when the user starts typing in the confirm field. */
+.password-match {
+  margin-top: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-height: 1.1em;
+  color: #6b7280;
+}
+
+.password-match.is-match {
+  color: #15803d;
+}
+
+.password-match.is-mismatch {
+  color: #b91c1c;
+}
+
+/* Dark theme overrides */
+body.theme-dark .password-toggle {
+  color: #cbd5e1;
+}
+body.theme-dark .password-toggle:hover {
+  background-color: rgba(59, 130, 246, 0.18);
+  color: #ffffff;
+}
+body.theme-dark .password-strength-bar {
+  background-color: rgba(148, 163, 184, 0.25);
+}
+body.theme-dark .password-strength-label,
+body.theme-dark .password-hint {
+  color: #cbd5e1;
+}
+body.theme-dark .password-match {
+  color: #cbd5e1;
+}
+body.theme-dark .password-match.is-match {
+  color: #4ade80;
+}
+body.theme-dark .password-match.is-mismatch {
+  color: #f87171;
+}
+
+/* High-contrast accessibility theme */
+body.a11y-high-contrast .password-strength-bar {
+  border: 1px solid var(--color-border);
+}
+body.a11y-high-contrast .password-toggle {
+  border: 1px solid var(--color-border);
+}
+
 /* ——— Settings page ——— */
 .settings-page {
   padding: 2.75rem 0 3.5rem;
