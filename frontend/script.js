@@ -1912,6 +1912,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   const FRIENDS_API_URL = "http://localhost:3000/api/friends";
+  const REMOVE_FRIEND_API_URL = "http://localhost:3000/api/friends/remove";
   const REQUESTS_API_URL = "http://localhost:3000/api/friends/requests";
   const ACCEPT_API_URL = "http://localhost:3000/api/friends/accept";
   const DENY_API_URL = "http://localhost:3000/api/friends/deny";
@@ -2032,6 +2033,84 @@ document.addEventListener("DOMContentLoaded", function () {
       openChat(friend.username);
     });
     actions.appendChild(msgBtn);
+
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className =
+      "btn btn-secondary friend-action-btn friend-remove-btn";
+    removeBtn.textContent = "Remove Friend";
+    removeBtn.addEventListener("click", function () {
+      var friendUsername =
+        friend && friend.username ? String(friend.username).trim() : "";
+      if (friendUsername === "") {
+        setPageMessage("Could not remove friend — missing username.", "error");
+        return;
+      }
+
+      var originalLabel = removeBtn.textContent;
+      removeBtn.disabled = true;
+      msgBtn.disabled = true;
+      removeBtn.textContent = "Removing\u2026";
+      setPageMessage("", "");
+
+      fetch(REMOVE_FRIEND_API_URL, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          usernameA: myUsername,
+          usernameB: friendUsername,
+        }),
+      })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (data) {
+              return {
+                ok: response.ok,
+                status: response.status,
+                data: data,
+              };
+            })
+            .catch(function () {
+              return { ok: response.ok, status: response.status, data: {} };
+            });
+        })
+        .then(function (result) {
+          if (result.ok && result.status === 200) {
+            card.remove();
+            if (friendsListEl.children.length === 0) {
+              renderEmptyInto(
+                friendsListEl,
+                "You don't have any friends yet. Try searching on the profile page."
+              );
+            }
+            setPageMessage(
+              "Removed @" + friendUsername + " from your friends.",
+              "success"
+            );
+            return;
+          }
+
+          var serverError =
+            (result.data && result.data.error) ||
+            "Could not remove friend.";
+          removeBtn.disabled = false;
+          msgBtn.disabled = false;
+          removeBtn.textContent = originalLabel;
+          setPageMessage(serverError, "error");
+        })
+        .catch(function (error) {
+          console.error("DELETE /api/friends/remove failed:", error);
+          removeBtn.disabled = false;
+          msgBtn.disabled = false;
+          removeBtn.textContent = originalLabel;
+          setPageMessage(
+            "Could not reach the server. Please try again later.",
+            "error"
+          );
+        });
+    });
+    actions.appendChild(removeBtn);
     card.appendChild(actions);
 
     return card;

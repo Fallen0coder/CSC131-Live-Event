@@ -660,6 +660,63 @@ app.get("/api/friends/:username", async (req, res) => {
   }
 });
 
+// DELETE /api/friends/remove
+// Body: { usernameA, usernameB }
+// Removes the friendship in both users' friends arrays (if linked) and
+// deletes any FriendRequest documents between the pair in either direction.
+// 200 on success, 404 if the users are not linked as friends (or a user is
+// missing).
+app.delete("/api/friends/remove", async (req, res) => {
+  try {
+    const a = normalizeUsername(req.body.usernameA);
+    const b = normalizeUsername(req.body.usernameB);
+
+    if (!a || !b) {
+      return res.status(400).json({
+        error: "Please provide usernameA and usernameB.",
+      });
+    }
+
+    if (a === b) {
+      return res.status(400).json({
+        error: "usernameA and usernameB must be different users.",
+      });
+    }
+
+    const userA = await findUserByUsername(a);
+    const userB = await findUserByUsername(b);
+
+    if (!userA || !userB) {
+      return res.status(404).json({ error: "Users are not friends." });
+    }
+
+    const friendsA = Array.isArray(userA.friends) ? userA.friends : [];
+    const friendsB = Array.isArray(userB.friends) ? userB.friends : [];
+    const linked = friendsA.includes(b) || friendsB.includes(a);
+
+    if (!linked) {
+      return res.status(404).json({ error: "Users are not friends." });
+    }
+
+    await Promise.all([
+      User.updateOne({ usernameLower: a }, { $pull: { friends: b } }),
+      User.updateOne({ usernameLower: b }, { $pull: { friends: a } }),
+    ]);
+
+    await FriendRequest.deleteMany({
+      $or: [
+        { senderUsername: a, receiverUsername: b },
+        { senderUsername: b, receiverUsername: a },
+      ],
+    });
+
+    res.status(200).json({ message: "Friendship removed." });
+  } catch (err) {
+    console.error("DELETE /api/friends/remove failed:", err);
+    res.status(500).json({ error: "Could not remove friendship." });
+  }
+});
+
 // POST /api/login
 // Logs a user in. Expects JSON body: { email, password }.
 // Compares the provided password against the stored bcrypt hash.
