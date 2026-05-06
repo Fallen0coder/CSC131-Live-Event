@@ -193,48 +193,155 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Event ownership / permission helpers
+// ---------------------------------------------------------------------------
+// Both PUT and DELETE on /api/events/:id share the same auth flow:
+//   1. Look up the requester by username (or email) in MongoDB.
+//   2. Re-read their actual role from the DB — we NEVER trust a `role`
+//      value sent from the frontend, because anyone could change it in
+//      DevTools. localStorage is for UI hints only.
+//   3. Allow the action if the DB role is "admin", OR if the event's
+//      stored creatorUsername matches the requester's username
+//      (case-insensitive).
+//   4. Otherwise return 403 with the exact wording the spec asks for.
+//
+// This helper does steps 1–3 and returns either:
+//   { ok: true,  user, event }                — caller may proceed
+//   { ok: false, status, error }              — caller should respond
+async function authorizeEventChange(eventId, body) {
+  if (!mongoose.Types.ObjectId.isValid(eventId)) {
+    return { ok: false, status: 400, error: "Invalid event id." };
+  }
+
+  // Accept any of the field names the spec or the older code may use.
+  // The spec sample shows { username, role, ... } in the body; we also
+  // accept email so this works seamlessly with users who only have an
+  // email saved in localStorage.
+  const identifier =
+    (body && (body.username || body.email)) ||
+    (body && (body.requesterUsername || body.requesterEmail)) ||
+    "";
+
+  if (!identifier) {
+    return {
+      ok: false,
+      status: 400,
+      error: "Please provide your username (or email) in the request body.",
+    };
+  }
+
+  const requester = await findUserByEmailOrUsername(identifier);
+  if (!requester) {
+    // 401 (not 403) so the client knows it's an auth problem, not an
+    // ownership problem — they're not logged in as a real user.
+    return { ok: false, status: 401, error: "Requester not found." };
+  }
+
+  const eventDoc = await Event.findById(eventId);
+  if (!eventDoc) {
+    return { ok: false, status: 404, error: "Event not found." };
+  }
+
+  // ----- Permission check ----------------------------------------------
+  // Admins (per the live DB role) can edit/delete anything.
+  const dbRole = requester.role || "user";
+  if (dbRole === "admin") {
+    return { ok: true, user: requester, event: eventDoc };
+  }
+
+  // Otherwise the requester must be the creator of this specific event.
+  // Compare case-insensitively to match the rest of the app's username
+  // conventions (signup stores usernameLower, friends use lowercase).
+  const creator = (eventDoc.creatorUsername || "").trim().toLowerCase();
+  const me = (requester.username || "").trim().toLowerCase();
+  if (creator && creator === me) {
+    return { ok: true, user: requester, event: eventDoc };
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    error: "You can only modify events you created.",
+  };
+}
+
+// PUT /api/events/:id
+// Updates an existing event. Anyone may try to call this, but the
+// permission check above limits actual updates to:
+//   - the event's creator (matched on creatorUsername), OR
+//   - any user whose live MongoDB role is "admin".
+//
+// Body fields that may be updated (all optional — only provided ones change):
+//   title, date, time, location, category, description
+// Body must also include the requester identity:
+//   { username | email, role }    (role is informational; backend re-verifies)
+app.put("/api/events/:id", async (req, res) => {
+  try {
+    const auth = await authorizeEventChange(req.params.id, req.body || {});
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    const { title, date, time, location, category, description } =
+      req.body || {};
+
+    // Whitelist the editable fields. Anything else in the body is
+    // ignored — we never let callers patch creatorUsername, _id, etc.
+    const updates = {};
+    if (typeof title === "string" && title.trim() !== "") {
+      updates.title = title.trim();
+    }
+    if (typeof date === "string" && date.trim() !== "") {
+      updates.date = date.trim();
+    }
+    if (typeof time === "string") {
+      updates.time = time.trim();
+    }
+    if (typeof location === "string" && location.trim() !== "") {
+      updates.location = location.trim();
+    }
+    if (typeof category === "string") {
+      updates.category = category.trim();
+    }
+    if (typeof description === "string" && description.trim() !== "") {
+      updates.description = description.trim();
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res
+        .status(400)
+        .json({ error: "Please provide at least one field to update." });
+    }
+
+    Object.assign(auth.event, updates);
+    const saved = await auth.event.save();
+
+    res.json({ message: "Event updated.", event: saved });
+  } catch (err) {
+    console.error("PUT /api/events/:id failed:", err);
+    res.status(500).json({ error: "Could not update event." });
+  }
+});
+
 // DELETE /api/events/:id
-// Admin-only. Body: { requesterEmail | requesterUsername }
-// - Verifies the requester exists AND has role === "admin" in MongoDB.
-//   We never trust a `role` field sent from the client — it's always
-//   re-checked against the database here.
-// - Also cleans up any RSVPs that pointed at this event so we don't leave
-//   orphaned records behind.
+// Removes an event from MongoDB. Permission rules match PUT above:
+//   - admins (per the live DB role) may delete any event
+//   - regular users may delete only events they created
+// We also clean up any RSVPs that referenced this event so we don't
+// leave orphaned records in the RSVP collection.
+//
+// Body must include the requester identity:
+//   { username | email, role }    (role is informational; backend re-verifies)
 app.delete("/api/events/:id", async (req, res) => {
   try {
-    const eventId = req.params.id;
-    if (!mongoose.Types.ObjectId.isValid(eventId)) {
-      return res.status(400).json({ error: "Invalid event id." });
+    const auth = await authorizeEventChange(req.params.id, req.body || {});
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
     }
 
-    const { requesterEmail, requesterUsername } = req.body || {};
-    const identifier = requesterEmail || requesterUsername;
-    if (!identifier) {
-      return res.status(400).json({
-        error: "Please provide requesterEmail or requesterUsername.",
-      });
-    }
-
-    const requester = await findUserByEmailOrUsername(identifier);
-    if (!requester) {
-      return res.status(401).json({ error: "Requester not found." });
-    }
-    if (requester.role !== "admin") {
-      // Server-side gate: even if the frontend tried to call this route
-      // for a non-admin user, the database is the source of truth.
-      return res
-        .status(403)
-        .json({ error: "Admin permission required to delete events." });
-    }
-
-    const deleted = await Event.findByIdAndDelete(eventId);
-    if (!deleted) {
-      return res.status(404).json({ error: "Event not found." });
-    }
-
-    // Tidy up RSVPs that referenced this event so the user's "events I'm
-    // going to" lists stay consistent.
-    await RSVP.deleteMany({ eventId: eventId });
+    await Event.deleteOne({ _id: auth.event._id });
+    await RSVP.deleteMany({ eventId: auth.event._id });
 
     res.json({ message: "Event deleted." });
   } catch (err) {

@@ -3048,3 +3048,195 @@ body.theme-dark #admin-key-form code {
   background: rgba(59, 130, 246, 0.18);
   color: #93c5fd;
 }
+
+/* ===========================================================================
+   EVENT EDIT / DELETE BUTTONS + EDIT EVENT MODAL
+   ---------------------------------------------------------------------------
+   The Edit + Delete buttons appear on event cards only when the logged-in
+   user owns the event (or is an admin). Both buttons sit inside
+   .event-card-actions next to the RSVP button.
+   =========================================================================== */
+
+/* Soft blue outline for "Edit" — matches the primary accent without
+   competing with the RSVP button next to it. */
+.event-edit-btn {
+  border: 1px solid rgba(37, 99, 235, 0.4);
+  background: transparent;
+  color: var(--color-primary-dark);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.event-edit-btn:hover:not(:disabled) {
+  background: var(--color-primary);
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.32);
+}
+
+.event-edit-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* Red outline for "Delete" — same look as the older .admin-delete-btn
+   so the visual language stays consistent. */
+.event-delete-btn {
+  border: 1px solid rgba(185, 28, 28, 0.4);
+  background: transparent;
+  color: #b91c1c;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.event-delete-btn:hover:not(:disabled) {
+  background: #b91c1c;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.32);
+}
+
+.event-delete-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+body.theme-dark .event-edit-btn {
+  border-color: rgba(96, 165, 250, 0.55);
+  color: #93c5fd;
+}
+
+body.theme-dark .event-edit-btn:hover:not(:disabled) {
+  background: #2563eb;
+  color: #ffffff;
+}
+
+body.theme-dark .event-delete-btn {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fca5a5;
+}
+
+body.theme-dark .event-delete-btn:hover:not(:disabled) {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+   Generic modal overlay (used by the Edit Event modal on events.html).
+   Built on the same idea as .chat-overlay but slightly wider and taller
+   so a multi-field form fits comfortably without scrolling on desktop.
+   --------------------------------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(15, 23, 42, 0.55);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: modal-overlay-in 0.18s ease;
+}
+
+.modal-overlay.is-hidden {
+  display: none;
+}
+
+.modal-window {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modal-window-in 0.22s ease;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.modal-header h3 {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.modal-close-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.modal-close-btn:hover {
+  background-color: rgba(185, 28, 28, 0.1);
+  color: #b91c1c;
+}
+
+.modal-body {
+  padding: 1.15rem;
+  overflow-y: auto;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+.modal-actions .login-submit-btn,
+.modal-actions .settings-btn {
+  flex: 1 1 auto;
+  width: auto;
+  margin-top: 0;
+}
+
+@keyframes modal-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modal-window-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

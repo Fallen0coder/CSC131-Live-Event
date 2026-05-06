@@ -67,6 +67,100 @@
     </div>
   </main>
 
+  <!--
+    Edit Event modal. Hidden by default (.is-hidden). script.js opens it
+    when a user clicks "Edit" on an event card they own (or any event,
+    if they're an admin). Submitting the form sends a PUT request to
+    /api/events/:id with the logged-in user's username + role; the
+    backend re-verifies the role in MongoDB before saving.
+  -->
+  <div
+    id="edit-event-overlay"
+    class="modal-overlay is-hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="edit-event-title-heading"
+  >
+    <div class="modal-window">
+      <header class="modal-header">
+        <h3 id="edit-event-title-heading">Edit Event</h3>
+        <button
+          type="button"
+          id="edit-event-close-btn"
+          class="modal-close-btn"
+          aria-label="Close edit event"
+        >×</button>
+      </header>
+
+      <form id="edit-event-form" class="modal-body settings-form" novalidate>
+        <!-- Hidden field: which event we're editing. Filled in by JS. -->
+        <input type="hidden" id="edit-event-id" />
+
+        <div class="form-field">
+          <label for="edit-event-title">Event Title</label>
+          <input type="text" id="edit-event-title" name="title" />
+        </div>
+
+        <div class="form-field">
+          <label for="edit-event-date">Date</label>
+          <input type="date" id="edit-event-date" name="date" />
+        </div>
+
+        <div class="form-field">
+          <label for="edit-event-time">Time</label>
+          <input type="time" id="edit-event-time" name="time" />
+        </div>
+
+        <div class="form-field">
+          <label for="edit-event-location">Location</label>
+          <input type="text" id="edit-event-location" name="location" />
+        </div>
+
+        <div class="form-field">
+          <label for="edit-event-category">Category</label>
+          <select id="edit-event-category" name="category">
+            <option value="">Choose a category</option>
+            <option value="social">Social</option>
+            <option value="tech">Tech</option>
+            <option value="career">Career</option>
+            <option value="outdoor">Outdoor</option>
+            <option value="music">Music</option>
+            <option value="sports">Sports</option>
+          </select>
+        </div>
+
+        <div class="form-field">
+          <label for="edit-event-description">Description</label>
+          <textarea
+            id="edit-event-description"
+            name="description"
+            rows="4"
+          ></textarea>
+        </div>
+
+        <div class="modal-actions">
+          <button
+            type="button"
+            id="edit-event-cancel-btn"
+            class="btn btn-secondary settings-btn"
+          >Cancel</button>
+          <button
+            type="submit"
+            id="edit-event-submit-btn"
+            class="login-submit-btn"
+          >Save changes</button>
+        </div>
+
+        <p
+          id="edit-event-message"
+          class="settings-message"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </form>
+    </div>
+  </div>
+
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-brand">

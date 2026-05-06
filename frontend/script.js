@@ -698,17 +698,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
-    // Admin-only Delete button. We re-check the current user on every
-    // render (instead of caching once at page load) so the button reacts
-    // immediately if the user just unlocked or exited admin mode in
-    // another tab. The backend ALSO re-verifies role in MongoDB before
-    // honoring the delete, so this UI gate is purely cosmetic.
-    if (isCurrentUserAdmin() && event.id) {
+    // Edit + Delete buttons. Shown when the logged-in user either:
+    //   • created this event (case-insensitive username match), OR
+    //   • has role === "admin"
+    // We re-check on every render (rather than caching once at page
+    // load) so the buttons react immediately if the user just unlocked
+    // or exited admin mode in another tab. The backend ALSO re-verifies
+    // ownership/role in MongoDB before honoring any change, so this UI
+    // gate is purely cosmetic.
+    if (event.id && canManageEvent(event)) {
       html +=
-        "<button class='admin-delete-btn' type='button' " +
-          "data-admin-delete-id='" + escapeHtml(event.id) + "'>" +
-          "Delete event" +
-        "</button>";
+        "<button class='event-edit-btn' type='button'>Edit</button>" +
+        "<button class='event-delete-btn' type='button'>Delete</button>";
     }
     html += "</div>";
     card.innerHTML = html;
@@ -736,32 +737,58 @@ document.addEventListener("DOMContentLoaded", function () {
       });
     }
 
-    // Admin-only Delete button click. Wired here so each card owns its
-    // own handler and we don't need a fragile event-delegation listener.
-    const adminDeleteBtn = card.querySelector(".admin-delete-btn");
-    if (adminDeleteBtn) {
-      adminDeleteBtn.addEventListener("click", function (clickEvent) {
+    // Edit + Delete buttons. The same canManageEvent() check guards
+    // both the rendering and the click handlers — so even if someone
+    // re-adds the buttons via DevTools, they still hit the same gate.
+    const editBtn = card.querySelector(".event-edit-btn");
+    if (editBtn) {
+      editBtn.addEventListener("click", function (clickEvent) {
         clickEvent.preventDefault();
-        deleteEventAsAdmin(event, card, adminDeleteBtn);
+        openEditEventModal(event, card);
+      });
+    }
+    const deleteBtn = card.querySelector(".event-delete-btn");
+    if (deleteBtn) {
+      deleteBtn.addEventListener("click", function (clickEvent) {
+        clickEvent.preventDefault();
+        deleteEvent(event, card, deleteBtn);
       });
     }
     return card;
   }
 
-  // DELETE /api/events/:id — admin-only on the backend. We send the
-  // logged-in user's email/username so the server can re-verify their
-  // role in MongoDB. The frontend role check is just for the UI; the
-  // backend is the real gatekeeper.
-  function deleteEventAsAdmin(event, card, button) {
+  // Returns true if the *currently logged-in* user is allowed to edit or
+  // delete this event in the UI. The backend ALWAYS re-checks this rule
+  // against MongoDB, so this helper is purely for showing/hiding buttons.
+  // Allowed when:
+  //   - the user is admin, OR
+  //   - the user's username matches event.creatorUsername (case-insensitive)
+  function canManageEvent(event) {
     const user = getCurrentUser();
-    if (!user || user.role !== "admin") {
-      showEventsBanner(
-        "Admin permission required to delete events.",
-        "error"
-      );
+    if (!user || !user.username) return false;
+    if (user.role === "admin") return true;
+    const me = String(user.username).trim().toLowerCase();
+    const creator = String(event.creatorUsername || "").trim().toLowerCase();
+    return creator !== "" && creator === me;
+  }
+
+  // DELETE /api/events/:id
+  // Anyone may try to call this, but the backend only honors it when
+  // the requester is the event's creator OR has role === "admin" in
+  // MongoDB. We send the logged-in user's username + role from
+  // localStorage so the backend can do its own check.
+  function deleteEvent(event, card, button) {
+    const user = getCurrentUser();
+    if (!user || !user.username) {
+      showEventsBanner("Please log in to delete events.", "error");
       return;
     }
     if (!event || !event.id) return;
+
+    if (!canManageEvent(event)) {
+      showEventsBanner("You can only modify events you created.", "error");
+      return;
+    }
 
     const ok = confirm(
       "Delete this event? This removes it for everyone and cannot be undone."
@@ -776,8 +803,10 @@ document.addEventListener("DOMContentLoaded", function () {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        requesterEmail: user.email || "",
-        requesterUsername: user.username || "",
+        username: user.username,
+        email: user.email || "",
+        // role is informational — the backend re-reads it from MongoDB.
+        role: user.role || "user",
       }),
     })
       .then(function (response) {
@@ -792,6 +821,8 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(function (result) {
         if (!result.ok) {
+          // Use the backend's exact error wording — that includes
+          // "You can only modify events you created." for 403s.
           const message =
             (result.data && result.data.error) || "Could not delete event.";
           showEventsBanner(message, "error");
@@ -800,7 +831,6 @@ document.addEventListener("DOMContentLoaded", function () {
           return;
         }
 
-        // Success — remove the card from the DOM and let the user know.
         if (card && card.parentNode) {
           card.parentNode.removeChild(card);
         }
@@ -815,6 +845,231 @@ document.addEventListener("DOMContentLoaded", function () {
         button.disabled = false;
         button.textContent = originalLabel;
       });
+  }
+
+  // -------------------------------------------------------------------------
+  // Edit Event modal
+  // -------------------------------------------------------------------------
+  // The markup lives in events.html (#edit-event-overlay). Here we wire
+  // up the open/close behavior and the form submit, which sends a PUT
+  // request to /api/events/:id. The backend uses the same permission
+  // helper as DELETE — only the creator or an admin may save changes.
+
+  const editOverlay = document.getElementById("edit-event-overlay");
+  const editForm = document.getElementById("edit-event-form");
+  const editIdInput = document.getElementById("edit-event-id");
+  const editTitleInput = document.getElementById("edit-event-title");
+  const editDateInput = document.getElementById("edit-event-date");
+  const editTimeInput = document.getElementById("edit-event-time");
+  const editLocationInput = document.getElementById("edit-event-location");
+  const editCategoryInput = document.getElementById("edit-event-category");
+  const editDescriptionInput = document.getElementById("edit-event-description");
+  const editSubmitBtn = document.getElementById("edit-event-submit-btn");
+  const editMessage = document.getElementById("edit-event-message");
+  const editCloseBtn = document.getElementById("edit-event-close-btn");
+  const editCancelBtn = document.getElementById("edit-event-cancel-btn");
+
+  // Track which DOM card we're editing so the success path can update
+  // it in place without a full re-fetch of the events list.
+  let editingCard = null;
+
+  function showEditMessage(text, type) {
+    if (!editMessage) return;
+    editMessage.textContent = text || "";
+    editMessage.classList.remove("is-success", "is-error");
+    if (type === "success") editMessage.classList.add("is-success");
+    if (type === "error") editMessage.classList.add("is-error");
+  }
+
+  // Convert a stored time like "18:00" or "6:00 PM" into the strict
+  // "HH:MM" format <input type="time"> requires. If we can't parse it
+  // we just leave the input blank so the user can re-enter it.
+  function toTimeInputValue(value) {
+    if (!value) return "";
+    const hhmm = /^(\d{1,2}):(\d{2})/.exec(value);
+    if (hhmm) {
+      const h = String(Math.min(23, Math.max(0, Number(hhmm[1])))).padStart(2, "0");
+      const m = String(Math.min(59, Math.max(0, Number(hhmm[2])))).padStart(2, "0");
+      return h + ":" + m;
+    }
+    const parsed = new Date("1970-01-01T" + value);
+    if (!isNaN(parsed.getTime())) {
+      const h = String(parsed.getHours()).padStart(2, "0");
+      const m = String(parsed.getMinutes()).padStart(2, "0");
+      return h + ":" + m;
+    }
+    return "";
+  }
+
+  function openEditEventModal(event, card) {
+    if (!editOverlay || !editForm) {
+      // Modal markup missing — fall back to a friendly message instead
+      // of crashing. (Shouldn't happen on events.html.)
+      showEventsBanner("Edit form is unavailable on this page.", "error");
+      return;
+    }
+    if (!canManageEvent(event)) {
+      showEventsBanner("You can only modify events you created.", "error");
+      return;
+    }
+
+    editingCard = card;
+    showEditMessage("", null);
+
+    editIdInput.value = event.id || "";
+    editTitleInput.value = event.title || "";
+    editDateInput.value = event.date || "";
+    editTimeInput.value = toTimeInputValue(event.time);
+    editLocationInput.value = event.location || "";
+    editCategoryInput.value = (event.category || "").toLowerCase();
+    editDescriptionInput.value = event.description || "";
+
+    editOverlay.classList.remove("is-hidden");
+    // Focus the first field so keyboard users can start typing right away.
+    setTimeout(function () { editTitleInput.focus(); }, 0);
+  }
+
+  function closeEditEventModal() {
+    if (!editOverlay) return;
+    editOverlay.classList.add("is-hidden");
+    editingCard = null;
+    showEditMessage("", null);
+  }
+
+  if (editCloseBtn) editCloseBtn.addEventListener("click", closeEditEventModal);
+  if (editCancelBtn) editCancelBtn.addEventListener("click", closeEditEventModal);
+
+  // Click the dark backdrop (but not the inner window) to close.
+  if (editOverlay) {
+    editOverlay.addEventListener("click", function (clickEvent) {
+      if (clickEvent.target === editOverlay) {
+        closeEditEventModal();
+      }
+    });
+  }
+
+  // Escape key closes the modal too — small UX detail but expected.
+  document.addEventListener("keydown", function (keyEvent) {
+    if (
+      keyEvent.key === "Escape" &&
+      editOverlay &&
+      !editOverlay.classList.contains("is-hidden")
+    ) {
+      closeEditEventModal();
+    }
+  });
+
+  if (editForm) {
+    editForm.addEventListener("submit", function (submitEvent) {
+      submitEvent.preventDefault();
+
+      const eventId = editIdInput.value;
+      if (!eventId) return;
+
+      const user = getCurrentUser();
+      if (!user || !user.username) {
+        showEditMessage("You must be logged in to edit events.", "error");
+        return;
+      }
+
+      // Quick client-side checks. The backend re-validates everything,
+      // so this is just to give instant feedback.
+      const title = editTitleInput.value.trim();
+      const date = editDateInput.value.trim();
+      const time = editTimeInput.value.trim();
+      const location = editLocationInput.value.trim();
+      const category = editCategoryInput.value.trim();
+      const description = editDescriptionInput.value.trim();
+
+      if (
+        title === "" ||
+        date === "" ||
+        location === "" ||
+        description === ""
+      ) {
+        showEditMessage(
+          "Please fill in title, date, location, and description.",
+          "error"
+        );
+        return;
+      }
+
+      editSubmitBtn.disabled = true;
+      showEditMessage("Saving changes\u2026", null);
+
+      fetch(EVENTS_API_URL + "/" + encodeURIComponent(eventId), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: user.username,
+          email: user.email || "",
+          role: user.role || "user",
+          title: title,
+          date: date,
+          time: time,
+          location: location,
+          category: category,
+          description: description,
+        }),
+      })
+        .then(function (response) {
+          return response
+            .json()
+            .then(function (data) {
+              return { ok: response.ok, data: data };
+            })
+            .catch(function () {
+              return { ok: response.ok, data: {} };
+            });
+        })
+        .then(function (result) {
+          editSubmitBtn.disabled = false;
+
+          if (!result.ok) {
+            const message =
+              (result.data && result.data.error) || "Could not update event.";
+            showEditMessage(message, "error");
+            return;
+          }
+
+          // Replace the in-memory event object's fields so any
+          // subsequent click on this card sees the new values.
+          const updated = (result.data && result.data.event) || {};
+          event.title = updated.title || title;
+          event.date = updated.date || date;
+          event.time = updated.time !== undefined ? updated.time : time;
+          event.location = updated.location || location;
+          event.category =
+            updated.category !== undefined ? updated.category : category;
+          event.description = updated.description || description;
+
+          // Swap the card in place with a freshly rendered version so
+          // the user sees the new values without a full page reload.
+          if (editingCard && editingCard.parentNode) {
+            const rsvpedSet =
+              editingCard.querySelector(".rsvp-btn.is-rsvped") !== null
+                ? new Set([event.id])
+                : new Set();
+            const newCard = createEventCard(event, rsvpedSet);
+            editingCard.parentNode.replaceChild(newCard, editingCard);
+          }
+
+          showEditMessage("Event updated.", "success");
+          showEventsBanner("Event updated.", "success");
+
+          // Close the modal after a short pause so the success message
+          // is visible for a moment.
+          setTimeout(closeEditEventModal, 600);
+        })
+        .catch(function (err) {
+          console.error("PUT /api/events/:id failed:", err);
+          editSubmitBtn.disabled = false;
+          showEditMessage(
+            "Could not reach the server. Please try again later.",
+            "error"
+          );
+        });
+    });
   }
 
   function showLoadingState() {
