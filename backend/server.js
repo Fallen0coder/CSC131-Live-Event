@@ -7,6 +7,8 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
+const http = require("http");
+const { Server } = require("socket.io");
 const path = require("path");
 const fs = require("fs");
 
@@ -19,8 +21,51 @@ const GroupChat = require("./models/GroupChat");
 const GroupChatMessage = require("./models/GroupChatMessage");
 
 const app = express();
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+  },
+});
 const PORT = Number(process.env.PORT) || 3000;
 const MONGO_URI = process.env.MONGO_URI;
+
+function userRoom(usernameLower) {
+  return "user:" + usernameLower;
+}
+
+function groupRoom(groupId) {
+  return "group:" + String(groupId);
+}
+
+io.on("connection", (socket) => {
+  // Optional handshake join: io(".../?username=alice")
+  const handshakeUsername = normalizeUsername(socket.handshake.query.username);
+  if (handshakeUsername) {
+    socket.join(userRoom(handshakeUsername));
+  }
+
+  // Frontend contract requested by user:
+  socket.on("join", (username) => {
+    const normalized = normalizeUsername(username);
+    if (!normalized) return;
+    socket.join(userRoom(normalized));
+  });
+
+  // Backward-compatible explicit registration payload.
+  socket.on("register-user", (payload) => {
+    const normalized = normalizeUsername(payload && payload.username);
+    if (!normalized) return;
+    socket.join(userRoom(normalized));
+  });
+
+  // Optional group room joins for real-time group messages.
+  socket.on("join-group", (groupId) => {
+    if (!groupId) return;
+    socket.join(groupRoom(groupId));
+  });
+});
 
 app.use(cors());
 app.use(express.json());
@@ -1409,6 +1454,15 @@ app.post("/api/messages", async (req, res) => {
       text,
     });
 
+    io.to(userRoom(receiver)).emit("newMessage", {
+      id: newMessage.id,
+      senderUsername: newMessage.senderUsername,
+      receiverUsername: newMessage.receiverUsername,
+      text: newMessage.text,
+      createdAt: newMessage.createdAt,
+      read: newMessage.read,
+    });
+
     res.status(201).json({
       message: "Message sent.",
       data: newMessage,
@@ -1701,6 +1755,14 @@ app.post("/api/groupchats/:id/messages", async (req, res) => {
       text,
     });
 
+    io.to(groupRoom(id)).emit("newGroupMessage", {
+      id: newMessage.id,
+      groupChatId: String(newMessage.groupChatId),
+      senderUsername: newMessage.senderUsername,
+      text: newMessage.text,
+      createdAt: newMessage.createdAt,
+    });
+
     res.status(201).json({
       message: "Group message sent.",
       data: {
@@ -1885,6 +1947,6 @@ app.post("/api/groupchats/:id/members", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Start the server
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

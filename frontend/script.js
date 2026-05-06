@@ -2273,6 +2273,14 @@ document.addEventListener("DOMContentLoaded", function () {
     return;
   }
 
+  var socket = null;
+  if (typeof io === "function") {
+    socket = io("http://localhost:3000");
+    socket.on("connect", function () {
+      socket.emit("join", myUsername);
+    });
+  }
+
   const FRIENDS_API_URL = "http://localhost:3000/api/friends";
   const REMOVE_FRIEND_API_URL = "http://localhost:3000/api/friends/remove";
   const REQUESTS_API_URL = "http://localhost:3000/api/friends/requests";
@@ -2775,6 +2783,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const groupChatForm = document.getElementById("group-chat-form");
   const groupChatInput = document.getElementById("group-chat-input");
   const groupChatSendBtn = document.getElementById("group-chat-send-btn");
+  const groupChatMembersListEl = document.getElementById("group-chat-members-list");
   const groupChatAddMemberBtn = document.getElementById("group-chat-add-member-btn");
   const groupChatLeaveBtn = document.getElementById("group-chat-leave-btn");
   const groupChatDeleteBtn = document.getElementById("group-chat-delete-btn");
@@ -2784,6 +2793,60 @@ document.addEventListener("DOMContentLoaded", function () {
 
   /** @type {{ id: string, name: string, creatorUsername: string, members: string[] } | null} */
   var activeGroupChat = null;
+
+  function renderGroupChatMembers(members) {
+    if (!groupChatMembersListEl) return;
+    groupChatMembersListEl.innerHTML = "";
+    var list = Array.isArray(members) ? members : [];
+    if (list.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "group-chat-member-row";
+      empty.textContent = "No members found.";
+      groupChatMembersListEl.appendChild(empty);
+      return;
+    }
+    list.forEach(function (memberUsername) {
+      var row = document.createElement("p");
+      row.className = "group-chat-member-row";
+      row.textContent = "@" + String(memberUsername || "");
+      groupChatMembersListEl.appendChild(row);
+    });
+  }
+
+  function refreshActiveGroupChatDetails() {
+    if (!activeGroupChat) return Promise.resolve(null);
+    return fetch(GROUP_CHATS_API_URL + "/" + encodeURIComponent(activeGroupChat.id))
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        }).catch(function () {
+          return { ok: response.ok, data: {} };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.data) {
+          activeGroupChat.name = result.data.name || activeGroupChat.name;
+          activeGroupChat.creatorUsername = String(
+            result.data.creatorUsername || activeGroupChat.creatorUsername || ""
+          ).toLowerCase();
+          activeGroupChat.members = Array.isArray(result.data.members)
+            ? result.data.members.slice()
+            : [];
+          if (groupChatTitleEl) groupChatTitleEl.textContent = activeGroupChat.name;
+          if (groupChatDeleteBtn) {
+            var showDelete =
+              activeGroupChat.creatorUsername === String(myUsername).toLowerCase();
+            groupChatDeleteBtn.classList.toggle("is-hidden", !showDelete);
+          }
+          renderGroupChatMembers(activeGroupChat.members);
+        }
+        return result;
+      })
+      .catch(function (err) {
+        console.error("Failed to load group details:", err);
+        return { ok: false, data: {} };
+      });
+  }
 
   function setGroupCreatePanelVisible(show) {
     if (!groupCreatePanel) return;
@@ -3063,6 +3126,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (groupChatAddMemberRow) {
       groupChatAddMemberRow.classList.add("is-hidden");
     }
+    renderGroupChatMembers([]);
     loadGroupChats();
   }
 
@@ -3082,6 +3146,11 @@ document.addEventListener("DOMContentLoaded", function () {
       groupChatAddMemberRow.classList.add("is-hidden");
     }
     groupChatOverlay.classList.remove("is-hidden");
+    if (socket) {
+      socket.emit("join-group", activeGroupChat.id);
+    }
+    renderGroupChatMembers(activeGroupChat.members);
+    refreshActiveGroupChatDetails();
     loadGroupChatMessages();
     if (groupChatDeleteBtn) {
       var showDelete =
@@ -3134,7 +3203,27 @@ document.addEventListener("DOMContentLoaded", function () {
     groupChatLeaveBtn.addEventListener("click", function () {
       if (!activeGroupChat) return;
       groupChatLeaveBtn.disabled = true;
+      var leaveUsername = myUsername;
       fetch(
+        GROUP_CHATS_API_URL +
+          "/" +
+          encodeURIComponent(activeGroupChat.id) +
+          "/messages",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            senderUsername: "system",
+            text: leaveUsername + " has left the group",
+          }),
+        }
+      )
+        .catch(function (err) {
+          // Best effort: still attempt to leave if system message fails.
+          console.error("Failed to post leave system message:", err);
+        })
+        .then(function () {
+          return fetch(
         GROUP_CHATS_API_URL +
           "/" +
           encodeURIComponent(activeGroupChat.id) +
@@ -3144,7 +3233,8 @@ document.addEventListener("DOMContentLoaded", function () {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: myUsername }),
         }
-      )
+      );
+        })
         .then(function (response) {
           return response.json().then(function (data) {
             return { ok: response.ok, data: data };
@@ -3258,6 +3348,8 @@ document.addEventListener("DOMContentLoaded", function () {
             if (groupChatAddMemberInput) {
               groupChatAddMemberInput.value = "";
             }
+            renderGroupChatMembers(activeGroupChat.members);
+            refreshActiveGroupChatDetails();
             loadGroupChats();
           } else {
             var err =
@@ -3364,6 +3456,10 @@ document.addEventListener("DOMContentLoaded", function () {
   function buildConversationCard(convo) {
     var card = document.createElement("article");
     card.className = "user-result-card friend-card conversation-card";
+    card.setAttribute(
+      "data-partner",
+      String(convo.partner || "").toLowerCase()
+    );
 
     var avatar = document.createElement("div");
     avatar.className = "user-result-avatar";
@@ -3409,6 +3505,62 @@ document.addEventListener("DOMContentLoaded", function () {
     });
 
     return card;
+  }
+
+  function upsertConversationFromIncoming(message) {
+    if (!conversationsListEl || !message) return;
+    var myLower = String(myUsername).toLowerCase();
+    var sender = String(message.senderUsername || "").toLowerCase();
+    var receiver = String(message.receiverUsername || "").toLowerCase();
+    var partner = sender === myLower ? receiver : sender;
+    if (!partner) return;
+
+    var selector =
+      '.conversation-card[data-partner="' + partner.replace(/"/g, '\\"') + '"]';
+    var existing = conversationsListEl.querySelector(selector);
+
+    if (!existing) {
+      var convo = {
+        partner: partner,
+        lastMessage: {
+          text: message.text || "",
+          createdAt: message.createdAt || new Date().toISOString(),
+          senderUsername: sender,
+          read: sender === myLower ? true : false,
+        },
+      };
+      var empty = conversationsListEl.querySelector(".friend-empty");
+      if (empty) empty.remove();
+      conversationsListEl.prepend(buildConversationCard(convo));
+      return;
+    }
+
+    var preview = existing.querySelector(".convo-preview");
+    if (preview) {
+      var previewText = String(message.text || "");
+      if (previewText.length > 60) previewText = previewText.substring(0, 57) + "...";
+      if (sender === myLower) previewText = "You: " + previewText;
+      preview.textContent = previewText;
+    }
+
+    var time = existing.querySelector(".convo-time");
+    if (time) {
+      time.textContent = formatConvoTime(message.createdAt);
+    }
+
+    var badge = existing.querySelector(".convo-unread-badge");
+    if (sender !== myLower) {
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "convo-unread-badge";
+        badge.textContent = "New";
+        existing.appendChild(badge);
+      }
+    } else if (badge) {
+      badge.remove();
+    }
+
+    conversationsListEl.prepend(existing);
   }
 
   function loadConversations() {
@@ -3466,30 +3618,41 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
-    var myLower = myUsername.toLowerCase();
     messages.forEach(function (msg) {
-      var bubble = document.createElement("div");
-      var isMine = msg.senderUsername === myLower;
-      bubble.className = "chat-bubble" + (isMine ? " chat-bubble--sent" : " chat-bubble--received");
-
-      var senderEl = document.createElement("span");
-      senderEl.className = "chat-bubble-sender";
-      senderEl.textContent = isMine ? "You" : "@" + msg.senderUsername;
-      bubble.appendChild(senderEl);
-
-      var textEl = document.createElement("p");
-      textEl.className = "chat-bubble-text";
-      textEl.textContent = msg.text;
-      bubble.appendChild(textEl);
-
-      var timeEl = document.createElement("span");
-      timeEl.className = "chat-bubble-time";
-      timeEl.textContent = formatMessageTime(msg.createdAt);
-      bubble.appendChild(timeEl);
-
-      chatMessagesEl.appendChild(bubble);
+      appendDirectMessageBubble(msg);
     });
 
+    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+  }
+
+  function appendDirectMessageBubble(msg) {
+    if (!chatMessagesEl || !msg) return;
+    var emptyState = chatMessagesEl.querySelector(".chat-empty");
+    if (emptyState) emptyState.remove();
+
+    var myLower = String(myUsername).toLowerCase();
+    var senderLower = String(msg.senderUsername || "").toLowerCase();
+    var isMine = senderLower === myLower;
+    var bubble = document.createElement("div");
+    bubble.className =
+      "chat-bubble" + (isMine ? " chat-bubble--sent" : " chat-bubble--received");
+
+    var senderEl = document.createElement("span");
+    senderEl.className = "chat-bubble-sender";
+    senderEl.textContent = isMine ? "You" : "@" + (msg.senderUsername || "?");
+    bubble.appendChild(senderEl);
+
+    var textEl = document.createElement("p");
+    textEl.className = "chat-bubble-text";
+    textEl.textContent = msg.text || "";
+    bubble.appendChild(textEl);
+
+    var timeEl = document.createElement("span");
+    timeEl.className = "chat-bubble-time";
+    timeEl.textContent = formatMessageTime(msg.createdAt);
+    bubble.appendChild(timeEl);
+
+    chatMessagesEl.appendChild(bubble);
     chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
   }
 
@@ -3609,6 +3772,41 @@ document.addEventListener("DOMContentLoaded", function () {
       var text = chatInput ? chatInput.value.trim() : "";
       if (text !== "") sendChatMessage(text);
     });
+  }
+
+  function handleIncomingDirectMessage(message) {
+    if (!message) return;
+
+    var myLower = String(myUsername).toLowerCase();
+    var sender = String(message.senderUsername || "").toLowerCase();
+    var receiver = String(message.receiverUsername || "").toLowerCase();
+    var activePartner = String(activeChatPartner || "").toLowerCase();
+    var isForOpenChat =
+      activePartner &&
+      ((sender === activePartner && receiver === myLower) ||
+        (sender === myLower && receiver === activePartner));
+
+    if (isForOpenChat) {
+      appendDirectMessageBubble(message);
+      if (sender !== myLower) {
+        markMessagesAsRead(sender);
+      }
+    }
+
+    upsertConversationFromIncoming(message);
+  }
+
+  function handleIncomingGroupMessage(message) {
+    if (!message || !activeGroupChat) return;
+    var incomingGroupId = String(message.groupChatId || "");
+    if (incomingGroupId === String(activeGroupChat.id)) {
+      appendGroupChatMessageBubble(message);
+    }
+  }
+
+  if (socket) {
+    socket.on("newMessage", handleIncomingDirectMessage);
+    socket.on("newGroupMessage", handleIncomingGroupMessage);
   }
 
   // -------------------------------------------------------------------------
