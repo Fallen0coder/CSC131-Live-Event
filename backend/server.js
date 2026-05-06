@@ -15,6 +15,8 @@ const Event = require("./models/Event");
 const RSVP = require("./models/RSVP");
 const FriendRequest = require("./models/FriendRequest");
 const Message = require("./models/Message");
+const GroupChat = require("./models/GroupChat");
+const GroupChatMessage = require("./models/GroupChatMessage");
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -1312,6 +1314,317 @@ app.patch("/api/messages/read", async (req, res) => {
   } catch (err) {
     console.error("PATCH /api/messages/read failed:", err);
     res.status(500).json({ error: "Could not mark messages as read." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Group chat routes
+// ---------------------------------------------------------------------------
+
+// POST /api/groupchats
+// Body: { name, creatorUsername, members }
+// Creates a group; creator is always included in members. Every member must
+// exist as a User.
+app.post("/api/groupchats", async (req, res) => {
+  try {
+    const rawName = req.body.name;
+    const creator = normalizeUsername(req.body.creatorUsername);
+    const rawMembers = req.body.members;
+
+    if (typeof rawName !== "string" || rawName.trim() === "") {
+      return res.status(400).json({ error: "Please provide a non-empty name." });
+    }
+
+    if (!creator) {
+      return res.status(400).json({
+        error: "Please provide creatorUsername.",
+      });
+    }
+
+    if (!Array.isArray(rawMembers)) {
+      return res.status(400).json({
+        error: "members must be an array of usernames.",
+      });
+    }
+
+    const memberSet = new Set();
+    memberSet.add(creator);
+    for (let i = 0; i < rawMembers.length; i++) {
+      const n = normalizeUsername(rawMembers[i]);
+      if (n) memberSet.add(n);
+    }
+
+    const memberList = Array.from(memberSet);
+    for (let i = 0; i < memberList.length; i++) {
+      const u = await findUserByUsername(memberList[i]);
+      if (!u) {
+        return res.status(404).json({
+          error: "User not found: " + memberList[i],
+        });
+      }
+    }
+
+    const created = await GroupChat.create({
+      name: rawName.trim(),
+      creatorUsername: creator,
+      members: memberList,
+    });
+
+    res.status(201).json(created);
+  } catch (err) {
+    console.error("POST /api/groupchats failed:", err);
+    res.status(500).json({ error: "Could not create group chat." });
+  }
+});
+
+// GET /api/groupchats/:username
+// All group chats where this user appears in members (newest first).
+app.get("/api/groupchats/:username", async (req, res) => {
+  try {
+    const username = normalizeUsername(req.params.username);
+    if (!username) {
+      return res.status(400).json({ error: "Invalid username." });
+    }
+
+    const chats = await GroupChat.find({ members: username })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json(
+      chats.map((c) => ({
+        id: c._id.toString(),
+        name: c.name,
+        creatorUsername: c.creatorUsername,
+        members: c.members,
+        createdAt: c.createdAt,
+      }))
+    );
+  } catch (err) {
+    console.error("GET /api/groupchats/:username failed:", err);
+    res.status(500).json({ error: "Could not load group chats." });
+  }
+});
+
+// POST /api/groupchats/:id/messages
+// Body: { senderUsername, text } — sender must be a member of the group.
+app.post("/api/groupchats/:id/messages", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid group id." });
+    }
+
+    const sender = normalizeUsername(req.body.senderUsername);
+    const text =
+      typeof req.body.text === "string" ? req.body.text.trim() : "";
+
+    if (!sender || text === "") {
+      return res.status(400).json({
+        error: "Please provide senderUsername and text.",
+      });
+    }
+
+    const group = await GroupChat.findById(id);
+    if (!group) {
+      return res.status(404).json({ error: "Group chat not found." });
+    }
+
+    const members = Array.isArray(group.members) ? group.members : [];
+    if (!members.includes(sender)) {
+      return res.status(403).json({
+        error: "Only group members can post messages.",
+      });
+    }
+
+    const senderUser = await findUserByUsername(sender);
+    if (!senderUser) {
+      return res.status(404).json({ error: "Sender user not found." });
+    }
+
+    const newMessage = await GroupChatMessage.create({
+      groupChatId: id,
+      senderUsername: sender,
+      text,
+    });
+
+    res.status(201).json({
+      message: "Group message sent.",
+      data: {
+        id: newMessage.id,
+        groupChatId: String(newMessage.groupChatId),
+        senderUsername: newMessage.senderUsername,
+        text: newMessage.text,
+        createdAt: newMessage.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/groupchats/:id/messages failed:", err);
+    res.status(500).json({ error: "Could not send group message." });
+  }
+});
+
+// GET /api/groupchats/:id/messages
+// All messages in the group, oldest first.
+app.get("/api/groupchats/:id/messages", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid group id." });
+    }
+
+    const groupExists = await GroupChat.exists({ _id: id });
+    if (!groupExists) {
+      return res.status(404).json({ error: "Group chat not found." });
+    }
+
+    const messages = await GroupChatMessage.find({ groupChatId: id })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    res.json(
+      messages.map((m) => ({
+        id: m._id.toString(),
+        groupChatId: String(m.groupChatId),
+        senderUsername: m.senderUsername,
+        text: m.text,
+        createdAt: m.createdAt,
+      }))
+    );
+  } catch (err) {
+    console.error("GET /api/groupchats/:id/messages failed:", err);
+    res.status(500).json({ error: "Could not load group messages." });
+  }
+});
+
+// DELETE /api/groupchats/:id
+// Body: { username } — only the group's creator can delete the group.
+// Deletes the group chat row and all messages tied to it.
+app.delete("/api/groupchats/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid group id." });
+    }
+
+    const username = normalizeUsername(req.body.username);
+    if (!username) {
+      return res.status(400).json({ error: "Please provide username." });
+    }
+
+    const group = await GroupChat.findById(id);
+    if (!group) {
+      return res.status(404).json({ error: "Group chat not found." });
+    }
+
+    if (group.creatorUsername !== username) {
+      return res.status(403).json({
+        error: "Only the group creator can delete this group.",
+      });
+    }
+
+    await Promise.all([
+      GroupChat.deleteOne({ _id: id }),
+      GroupChatMessage.deleteMany({ groupChatId: id }),
+    ]);
+
+    res.status(200).json({ message: "Group chat deleted." });
+  } catch (err) {
+    console.error("DELETE /api/groupchats/:id failed:", err);
+    res.status(500).json({ error: "Could not delete group chat." });
+  }
+});
+
+// DELETE /api/groupchats/:id/members
+// Body: { username } — removes a member from the group.
+app.delete("/api/groupchats/:id/members", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid group id." });
+    }
+
+    const username = normalizeUsername(req.body.username);
+    if (!username) {
+      return res.status(400).json({ error: "Please provide username." });
+    }
+
+    const group = await GroupChat.findById(id);
+    if (!group) {
+      return res.status(404).json({ error: "Group chat not found." });
+    }
+
+    if (group.creatorUsername === username) {
+      return res.status(400).json({
+        error: "The creator cannot be removed. Delete the group instead.",
+      });
+    }
+
+    await GroupChat.updateOne({ _id: id }, { $pull: { members: username } });
+    const updated = await GroupChat.findById(id).lean();
+
+    res.status(200).json({
+      message: "Member removed.",
+      group: {
+        id: updated._id.toString(),
+        name: updated.name,
+        creatorUsername: updated.creatorUsername,
+        members: updated.members,
+        createdAt: updated.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("DELETE /api/groupchats/:id/members failed:", err);
+    res.status(500).json({ error: "Could not remove group member." });
+  }
+});
+
+// POST /api/groupchats/:id/members
+// Body: { username } — adds an existing user to members.
+app.post("/api/groupchats/:id/members", async (req, res) => {
+  try {
+    const id = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid group id." });
+    }
+
+    const username = normalizeUsername(req.body.username);
+    if (!username) {
+      return res.status(400).json({ error: "Please provide username." });
+    }
+
+    const group = await GroupChat.findById(id);
+    if (!group) {
+      return res.status(404).json({ error: "Group chat not found." });
+    }
+
+    const members = Array.isArray(group.members) ? group.members : [];
+    if (members.includes(username)) {
+      return res.status(400).json({
+        error: "User is already a member of this group.",
+      });
+    }
+
+    const user = await findUserByUsername(username);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    await GroupChat.updateOne({ _id: id }, { $addToSet: { members: username } });
+
+    const updated = await GroupChat.findById(id).lean();
+    res.status(201).json({
+      message: "Member added.",
+      group: {
+        id: updated._id.toString(),
+        name: updated.name,
+        creatorUsername: updated.creatorUsername,
+        members: updated.members,
+        createdAt: updated.createdAt,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/groupchats/:id/members failed:", err);
+    res.status(500).json({ error: "Could not add group member." });
   }
 });
 

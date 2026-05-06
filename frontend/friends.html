@@ -77,6 +77,67 @@
         ></div>
       </section>
 
+      <!-- Group chats -->
+      <section class="profile-card-block" aria-labelledby="group-chats-heading">
+        <h3 id="group-chats-heading">Group chats</h3>
+        <p class="friends-subtitle group-chats-intro">
+          Create a group with your friends and chat together.
+        </p>
+        <div class="group-chats-actions">
+          <button
+            type="button"
+            id="group-create-toggle-btn"
+            class="btn btn-primary"
+          >
+            Create Group Chat
+          </button>
+        </div>
+        <div
+          id="group-create-panel"
+          class="group-create-panel is-hidden"
+          aria-hidden="true"
+        >
+          <form id="group-create-form" class="group-create-form" autocomplete="off">
+            <label class="group-create-label" for="group-create-name">
+              Group name
+            </label>
+            <input
+              type="text"
+              id="group-create-name"
+              class="group-create-name-input"
+              placeholder="e.g. Study group"
+              required
+              maxlength="120"
+            />
+            <fieldset class="group-create-members-fieldset">
+              <legend class="group-create-legend">Add friends (optional)</legend>
+              <div
+                id="group-create-members"
+                class="group-create-members"
+                aria-label="Select friends to add"
+              ></div>
+            </fieldset>
+            <div class="group-create-form-actions">
+              <button type="submit" class="btn btn-primary" id="group-create-submit">
+                Create group
+              </button>
+              <button
+                type="button"
+                class="btn btn-secondary"
+                id="group-create-cancel-btn"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+        <div
+          id="group-chats-list"
+          class="friend-card-list group-chats-list"
+          aria-live="polite"
+        ></div>
+      </section>
+
       <!-- Conversations (recent messages) -->
       <section class="profile-card-block" aria-labelledby="conversations-heading">
         <h3 id="conversations-heading">Messages</h3>
@@ -89,6 +150,87 @@
 
     </div>
   </main>
+
+  <!-- Group chat modal overlay -->
+  <div
+    id="group-chat-overlay"
+    class="chat-overlay group-chat-overlay is-hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Group chat"
+  >
+    <div class="chat-window group-chat-window">
+      <header class="chat-header">
+        <h3 id="group-chat-title">Group chat</h3>
+        <button
+          type="button"
+          id="group-chat-close-btn"
+          class="chat-close-btn"
+          aria-label="Close group chat"
+        >
+          &times;
+        </button>
+      </header>
+      <div class="group-chat-toolbar">
+        <div class="group-chat-toolbar-actions">
+          <button
+            type="button"
+            id="group-chat-add-member-btn"
+            class="btn btn-secondary btn-sm group-chat-add-member-btn"
+          >
+            Add Member
+          </button>
+          <button
+            type="button"
+            id="group-chat-leave-btn"
+            class="btn btn-secondary btn-sm"
+          >
+            Leave Group
+          </button>
+          <button
+            type="button"
+            id="group-chat-delete-btn"
+            class="btn btn-secondary btn-sm is-hidden"
+          >
+            Delete Group
+          </button>
+        </div>
+        <div id="group-chat-add-member-row" class="group-chat-add-member-row is-hidden">
+          <label class="visually-hidden" for="group-chat-add-member-input">
+            Enter a friend's username
+          </label>
+          <input
+            type="text"
+            id="group-chat-add-member-input"
+            class="group-chat-add-member-input"
+            placeholder="friend username"
+            maxlength="60"
+          />
+          <button
+            type="button"
+            id="group-chat-add-member-confirm"
+            class="btn btn-primary btn-sm"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+      <div id="group-chat-messages" class="chat-messages" aria-live="polite"></div>
+      <form id="group-chat-form" class="chat-form" autocomplete="off">
+        <input
+          type="text"
+          id="group-chat-input"
+          class="chat-input"
+          placeholder="Type a message..."
+          required
+          maxlength="2000"
+        />
+        <button type="submit" id="group-chat-send-btn" class="btn btn-primary chat-send-btn">
+          Send
+        </button>
+      </form>
+    </div>
+  </div>
 
   <!-- Chat modal overlay -->
   <div id="chat-overlay" class="chat-overlay is-hidden" role="dialog" aria-modal="true" aria-label="Chat">

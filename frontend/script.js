@@ -1916,6 +1916,10 @@ document.addEventListener("DOMContentLoaded", function () {
   const REQUESTS_API_URL = "http://localhost:3000/api/friends/requests";
   const ACCEPT_API_URL = "http://localhost:3000/api/friends/accept";
   const DENY_API_URL = "http://localhost:3000/api/friends/deny";
+  const GROUP_CHATS_API_URL = "http://localhost:3000/api/groupchats";
+
+  /** Cached friends list for group create / add-member pickers. */
+  var friendsListCache = [];
 
   const subtitleEl = document.getElementById("friends-subtitle");
   const pageMessageEl = document.getElementById("friends-page-message");
@@ -2164,13 +2168,16 @@ document.addEventListener("DOMContentLoaded", function () {
         return response.json();
       })
       .then(function (friends) {
+        friendsListCache = Array.isArray(friends) ? friends.slice() : [];
         renderFriends(friends);
         cleanUpOutgoingAfterFriendsLoad(friends);
         // Re-render outgoing in case we removed accepted entries.
         renderOutgoing();
+        refreshGroupCreateMemberCheckboxes();
       })
       .catch(function (error) {
         console.error("Failed to load friends:", error);
+        friendsListCache = [];
         renderEmptyInto(
           friendsListEl,
           "Could not load your friends. Make sure the backend server is running."
@@ -2388,6 +2395,581 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // -------------------------------------------------------------------------
+  // 3b) GROUP CHATS
+  // -------------------------------------------------------------------------
+  const groupChatsListEl = document.getElementById("group-chats-list");
+  const groupCreatePanel = document.getElementById("group-create-panel");
+  const groupCreateToggleBtn = document.getElementById("group-create-toggle-btn");
+  const groupCreateForm = document.getElementById("group-create-form");
+  const groupCreateNameInput = document.getElementById("group-create-name");
+  const groupCreateMembersEl = document.getElementById("group-create-members");
+  const groupCreateCancelBtn = document.getElementById("group-create-cancel-btn");
+  const groupCreateSubmitBtn = document.getElementById("group-create-submit");
+
+  const groupChatOverlay = document.getElementById("group-chat-overlay");
+  const groupChatTitleEl = document.getElementById("group-chat-title");
+  const groupChatCloseBtn = document.getElementById("group-chat-close-btn");
+  const groupChatMessagesEl = document.getElementById("group-chat-messages");
+  const groupChatForm = document.getElementById("group-chat-form");
+  const groupChatInput = document.getElementById("group-chat-input");
+  const groupChatSendBtn = document.getElementById("group-chat-send-btn");
+  const groupChatAddMemberBtn = document.getElementById("group-chat-add-member-btn");
+  const groupChatLeaveBtn = document.getElementById("group-chat-leave-btn");
+  const groupChatDeleteBtn = document.getElementById("group-chat-delete-btn");
+  const groupChatAddMemberRow = document.getElementById("group-chat-add-member-row");
+  const groupChatAddMemberInput = document.getElementById("group-chat-add-member-input");
+  const groupChatAddMemberConfirm = document.getElementById("group-chat-add-member-confirm");
+
+  /** @type {{ id: string, name: string, creatorUsername: string, members: string[] } | null} */
+  var activeGroupChat = null;
+
+  function setGroupCreatePanelVisible(show) {
+    if (!groupCreatePanel) return;
+    if (show) {
+      groupCreatePanel.classList.remove("is-hidden");
+      groupCreatePanel.setAttribute("aria-hidden", "false");
+      refreshGroupCreateMemberCheckboxes();
+      if (groupCreateNameInput) groupCreateNameInput.focus();
+    } else {
+      groupCreatePanel.classList.add("is-hidden");
+      groupCreatePanel.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  function refreshGroupCreateMemberCheckboxes() {
+    if (!groupCreateMembersEl) return;
+    groupCreateMembersEl.innerHTML = "";
+    if (!friendsListCache.length) {
+      var empty = document.createElement("p");
+      empty.className = "friend-empty";
+      empty.textContent =
+        "Add friends first — then you can invite them to a group.";
+      groupCreateMembersEl.appendChild(empty);
+      return;
+    }
+    friendsListCache.forEach(function (friend, index) {
+      var username = friend && friend.username ? String(friend.username) : "";
+      if (username === "") return;
+      var id = "group-create-member-" + index;
+      var label = document.createElement("label");
+      label.className = "group-create-member-label";
+      label.setAttribute("for", id);
+      var cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.id = id;
+      cb.value = username;
+      label.appendChild(cb);
+      var span = document.createElement("span");
+      span.textContent = "@" + username;
+      label.appendChild(span);
+      groupCreateMembersEl.appendChild(label);
+    });
+  }
+
+  if (groupCreateToggleBtn) {
+    groupCreateToggleBtn.addEventListener("click", function () {
+      var hidden =
+        groupCreatePanel && groupCreatePanel.classList.contains("is-hidden");
+      setGroupCreatePanelVisible(hidden);
+    });
+  }
+
+  if (groupCreateCancelBtn) {
+    groupCreateCancelBtn.addEventListener("click", function () {
+      setGroupCreatePanelVisible(false);
+      if (groupCreateForm) groupCreateForm.reset();
+    });
+  }
+
+  if (groupCreateForm) {
+    groupCreateForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var name = groupCreateNameInput
+        ? String(groupCreateNameInput.value).trim()
+        : "";
+      if (name === "") {
+        setPageMessage("Please enter a group name.", "error");
+        return;
+      }
+
+      var selected = [];
+      if (groupCreateMembersEl) {
+        var boxes = groupCreateMembersEl.querySelectorAll(
+          'input[type="checkbox"]:checked'
+        );
+        boxes.forEach(function (box) {
+          if (box.value) selected.push(box.value);
+        });
+      }
+
+      if (groupCreateSubmitBtn) groupCreateSubmitBtn.disabled = true;
+      setPageMessage("Creating group\u2026", "info");
+
+      fetch(GROUP_CHATS_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name,
+          creatorUsername: myUsername,
+          members: selected,
+        }),
+      })
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, status: response.status, data: data };
+          }).catch(function () {
+            return { ok: response.ok, status: response.status, data: {} };
+          });
+        })
+        .then(function (result) {
+          if (result.ok && result.status === 201) {
+            setPageMessage("Group chat created.", "success");
+            setGroupCreatePanelVisible(false);
+            groupCreateForm.reset();
+            loadGroupChats();
+          } else {
+            var err =
+              (result.data && result.data.error) ||
+              "Could not create group chat.";
+            setPageMessage(err, "error");
+          }
+        })
+        .catch(function (err) {
+          console.error("POST /api/groupchats failed:", err);
+          setPageMessage(
+            "Could not reach the server. Please try again later.",
+            "error"
+          );
+        })
+        .finally(function () {
+          if (groupCreateSubmitBtn) groupCreateSubmitBtn.disabled = false;
+        });
+    });
+  }
+
+  function buildGroupChatCard(chat) {
+    var card = document.createElement("article");
+    card.className = "user-result-card friend-card group-chat-card";
+    card.setAttribute("data-group-id", String(chat.id || ""));
+    var info = document.createElement("div");
+    info.className = "user-result-info";
+    var title = document.createElement("p");
+    title.className = "user-result-name";
+    title.textContent = chat.name || "Group";
+    info.appendChild(title);
+    var meta = document.createElement("p");
+    meta.className = "user-result-handle group-chat-meta";
+    var n = (chat.members && chat.members.length) || 0;
+    meta.textContent =
+      n + " member" + (n === 1 ? "" : "s");
+    info.appendChild(meta);
+    card.appendChild(info);
+    card.style.cursor = "pointer";
+    card.addEventListener("click", function () {
+      openGroupChat(chat);
+    });
+    return card;
+  }
+
+  function renderGroupChatList(chats) {
+    if (!groupChatsListEl) return;
+    if (!Array.isArray(chats) || chats.length === 0) {
+      renderEmptyInto(
+        groupChatsListEl,
+        "You are not in any group chats yet. Create one above."
+      );
+      return;
+    }
+    groupChatsListEl.innerHTML = "";
+    chats.forEach(function (c) {
+      groupChatsListEl.appendChild(buildGroupChatCard(c));
+    });
+  }
+
+  function loadGroupChats() {
+    if (!groupChatsListEl) return;
+    renderLoadingInto(groupChatsListEl);
+    var url =
+      GROUP_CHATS_API_URL + "/" + encodeURIComponent(myUsername);
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          throw new Error("Request failed with status " + response.status);
+        }
+        return response.json();
+      })
+      .then(function (chats) {
+        renderGroupChatList(chats);
+      })
+      .catch(function (error) {
+        console.error("Failed to load group chats:", error);
+        renderEmptyInto(
+          groupChatsListEl,
+          "Could not load group chats. Make sure the backend server is running."
+        );
+      });
+  }
+
+  function formatGroupMessageTimestamp(isoString) {
+    if (!isoString) return "";
+    var d = new Date(isoString);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  function renderGroupChatMessages(messages) {
+    if (!groupChatMessagesEl) return;
+    groupChatMessagesEl.innerHTML = "";
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "chat-empty";
+      empty.textContent = "No messages yet. Say hello!";
+      groupChatMessagesEl.appendChild(empty);
+      return;
+    }
+
+    var myLower = String(myUsername).toLowerCase();
+    messages.forEach(function (msg) {
+      var bubble = document.createElement("div");
+      var isMine =
+        String(msg.senderUsername || "").toLowerCase() === myLower;
+      bubble.className =
+        "chat-bubble" +
+        (isMine ? " chat-bubble--sent" : " chat-bubble--received");
+
+      var senderEl = document.createElement("span");
+      senderEl.className = "chat-bubble-sender";
+      senderEl.textContent = isMine
+        ? "You"
+        : "@" + (msg.senderUsername || "?");
+      bubble.appendChild(senderEl);
+
+      var textEl = document.createElement("p");
+      textEl.className = "chat-bubble-text";
+      textEl.textContent = msg.text || "";
+      bubble.appendChild(textEl);
+
+      var timeEl = document.createElement("time");
+      timeEl.className = "chat-bubble-time group-chat-bubble-time";
+      timeEl.dateTime = msg.createdAt ? String(msg.createdAt) : "";
+      timeEl.textContent = formatGroupMessageTimestamp(msg.createdAt);
+      bubble.appendChild(timeEl);
+
+      groupChatMessagesEl.appendChild(bubble);
+    });
+
+    groupChatMessagesEl.scrollTop = groupChatMessagesEl.scrollHeight;
+  }
+
+  function loadGroupChatMessages() {
+    if (!groupChatMessagesEl || !activeGroupChat) return;
+    groupChatMessagesEl.innerHTML =
+      "<p class='chat-loading'>Loading\u2026</p>";
+
+    var url =
+      GROUP_CHATS_API_URL +
+      "/" +
+      encodeURIComponent(activeGroupChat.id) +
+      "/messages";
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) throw new Error("Status " + response.status);
+        return response.json();
+      })
+      .then(function (messages) {
+        renderGroupChatMessages(messages);
+      })
+      .catch(function (err) {
+        console.error("Failed to load group messages:", err);
+        groupChatMessagesEl.innerHTML =
+          "<p class='chat-empty'>Could not load messages.</p>";
+      });
+  }
+
+  function closeGroupChat() {
+    if (!groupChatOverlay) return;
+    groupChatOverlay.classList.add("is-hidden");
+    activeGroupChat = null;
+    if (groupChatAddMemberRow) {
+      groupChatAddMemberRow.classList.add("is-hidden");
+    }
+    loadGroupChats();
+  }
+
+  function openGroupChat(chat) {
+    if (!groupChatOverlay || !chat || !chat.id) return;
+    closeChat();
+    activeGroupChat = {
+      id: String(chat.id),
+      name: chat.name || "Group",
+      creatorUsername: String(chat.creatorUsername || "").toLowerCase(),
+      members: Array.isArray(chat.members) ? chat.members.slice() : [],
+    };
+    if (groupChatTitleEl) {
+      groupChatTitleEl.textContent = activeGroupChat.name;
+    }
+    if (groupChatAddMemberRow) {
+      groupChatAddMemberRow.classList.add("is-hidden");
+    }
+    groupChatOverlay.classList.remove("is-hidden");
+    loadGroupChatMessages();
+    if (groupChatDeleteBtn) {
+      var showDelete =
+        activeGroupChat.creatorUsername === String(myUsername).toLowerCase();
+      groupChatDeleteBtn.classList.toggle("is-hidden", !showDelete);
+    }
+    if (groupChatInput) {
+      groupChatInput.value = "";
+      groupChatInput.focus();
+    }
+  }
+
+  if (groupChatCloseBtn) {
+    groupChatCloseBtn.addEventListener("click", closeGroupChat);
+  }
+
+  if (groupChatOverlay) {
+    groupChatOverlay.addEventListener("click", function (e) {
+      if (e.target === groupChatOverlay) closeGroupChat();
+    });
+  }
+
+  if (groupChatAddMemberBtn) {
+    groupChatAddMemberBtn.addEventListener("click", function () {
+      if (!activeGroupChat) return;
+      if (groupChatAddMemberRow) {
+        groupChatAddMemberRow.classList.remove("is-hidden");
+      }
+      if (groupChatAddMemberInput) groupChatAddMemberInput.focus();
+    });
+  }
+
+  function removeGroupFromDisplayedList(groupId) {
+    if (!groupChatsListEl || !groupId) return;
+    var cards = groupChatsListEl.querySelectorAll(".group-chat-card");
+    cards.forEach(function (card) {
+      if (card.getAttribute("data-group-id") === String(groupId)) {
+        card.remove();
+      }
+    });
+    if (groupChatsListEl.children.length === 0) {
+      renderEmptyInto(
+        groupChatsListEl,
+        "You are not in any group chats yet. Create one above."
+      );
+    }
+  }
+
+  if (groupChatLeaveBtn) {
+    groupChatLeaveBtn.addEventListener("click", function () {
+      if (!activeGroupChat) return;
+      groupChatLeaveBtn.disabled = true;
+      fetch(
+        GROUP_CHATS_API_URL +
+          "/" +
+          encodeURIComponent(activeGroupChat.id) +
+          "/members",
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: myUsername }),
+        }
+      )
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, data: data };
+          }).catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            var removedId = activeGroupChat ? activeGroupChat.id : "";
+            closeGroupChat();
+            removeGroupFromDisplayedList(removedId);
+            setPageMessage("You left the group.", "success");
+          } else {
+            var err =
+              (result.data && result.data.error) || "Could not leave group.";
+            setPageMessage(err, "error");
+          }
+        })
+        .catch(function (err) {
+          console.error("DELETE /api/groupchats/:id/members failed:", err);
+          setPageMessage(
+            "Could not reach the server. Please try again later.",
+            "error"
+          );
+        })
+        .finally(function () {
+          groupChatLeaveBtn.disabled = false;
+        });
+    });
+  }
+
+  if (groupChatDeleteBtn) {
+    groupChatDeleteBtn.addEventListener("click", function () {
+      if (!activeGroupChat) return;
+      groupChatDeleteBtn.disabled = true;
+      fetch(
+        GROUP_CHATS_API_URL + "/" + encodeURIComponent(activeGroupChat.id),
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: myUsername }),
+        }
+      )
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, data: data };
+          }).catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+        })
+        .then(function (result) {
+          if (result.ok) {
+            var removedId = activeGroupChat ? activeGroupChat.id : "";
+            closeGroupChat();
+            removeGroupFromDisplayedList(removedId);
+            setPageMessage("Group deleted.", "success");
+          } else {
+            var err =
+              (result.data && result.data.error) || "Could not delete group.";
+            setPageMessage(err, "error");
+          }
+        })
+        .catch(function (err) {
+          console.error("DELETE /api/groupchats/:id failed:", err);
+          setPageMessage(
+            "Could not reach the server. Please try again later.",
+            "error"
+          );
+        })
+        .finally(function () {
+          groupChatDeleteBtn.disabled = false;
+        });
+    });
+  }
+
+  if (groupChatAddMemberConfirm) {
+    groupChatAddMemberConfirm.addEventListener("click", function () {
+      if (!activeGroupChat || !groupChatAddMemberInput) return;
+      var username = String(groupChatAddMemberInput.value || "").trim();
+      if (username === "") {
+        setPageMessage("Choose a friend to add.", "error");
+        return;
+      }
+      groupChatAddMemberConfirm.disabled = true;
+      fetch(
+        GROUP_CHATS_API_URL +
+          "/" +
+          encodeURIComponent(activeGroupChat.id) +
+          "/members",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username: username }),
+        }
+      )
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, data: data };
+          }).catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+        })
+        .then(function (result) {
+          if (result.ok && result.data.group && result.data.group.members) {
+            activeGroupChat.members = result.data.group.members.slice();
+            setPageMessage("Member added to the group.", "success");
+            if (groupChatAddMemberRow) {
+              groupChatAddMemberRow.classList.add("is-hidden");
+            }
+            if (groupChatAddMemberInput) {
+              groupChatAddMemberInput.value = "";
+            }
+            loadGroupChats();
+          } else {
+            var err =
+              (result.data && result.data.error) || "Could not add member.";
+            setPageMessage(err, "error");
+          }
+        })
+        .catch(function (err) {
+          console.error("POST group members failed:", err);
+          setPageMessage(
+            "Could not reach the server. Please try again later.",
+            "error"
+          );
+        })
+        .finally(function () {
+          groupChatAddMemberConfirm.disabled = false;
+        });
+    });
+  }
+
+  function sendGroupChatMessage(text) {
+    if (!activeGroupChat || text === "") return;
+    if (groupChatSendBtn) groupChatSendBtn.disabled = true;
+
+    fetch(
+      GROUP_CHATS_API_URL +
+        "/" +
+        encodeURIComponent(activeGroupChat.id) +
+        "/messages",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderUsername: myUsername,
+          text: text,
+        }),
+      }
+    )
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        }).catch(function () {
+          return { ok: response.ok, data: {} };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          if (groupChatInput) groupChatInput.value = "";
+          loadGroupChatMessages();
+        } else {
+          var errMsg =
+            (result.data && result.data.error) || "Could not send message.";
+          alert(errMsg);
+        }
+      })
+      .catch(function (err) {
+        console.error("Failed to send group message:", err);
+        alert("Could not reach the server. Please try again.");
+      })
+      .finally(function () {
+        if (groupChatSendBtn) groupChatSendBtn.disabled = false;
+        if (groupChatInput) groupChatInput.focus();
+      });
+  }
+
+  if (groupChatForm) {
+    groupChatForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var text = groupChatInput ? groupChatInput.value.trim() : "";
+      if (text !== "") sendGroupChatMessage(text);
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // 4) MESSAGING / CHAT
   // -------------------------------------------------------------------------
   var MESSAGES_API_URL = "http://localhost:3000/api/messages";
@@ -2588,6 +3170,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function openChat(partnerUsername) {
     if (!chatOverlay || !chatPartnerNameEl) return;
+    closeGroupChat();
     activeChatPartner = partnerUsername;
     chatPartnerNameEl.textContent = "Chat with @" + partnerUsername;
     chatOverlay.classList.remove("is-hidden");
@@ -2672,6 +3255,7 @@ document.addEventListener("DOMContentLoaded", function () {
   loadFriends();
   loadIncomingRequests();
   renderOutgoing();
+  loadGroupChats();
   loadConversations();
 });
 
