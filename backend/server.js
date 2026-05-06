@@ -591,6 +591,40 @@ app.post("/api/friends/deny", async (req, res) => {
   }
 });
 
+// DELETE /api/friend-requests/cancel
+// Body: { senderUsername, receiverUsername }
+// Deletes the pending FriendRequest from sender → receiver. 200 if a row
+// was removed, 404 if no matching pending request exists.
+app.delete("/api/friend-requests/cancel", async (req, res) => {
+  try {
+    const sender = normalizeUsername(req.body.senderUsername);
+    const receiver = normalizeUsername(req.body.receiverUsername);
+
+    if (!sender || !receiver) {
+      return res.status(400).json({
+        error: "Please provide senderUsername and receiverUsername.",
+      });
+    }
+
+    const result = await FriendRequest.deleteOne({
+      senderUsername: sender,
+      receiverUsername: receiver,
+      status: "pending",
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({
+        error: "No pending friend request found for those users.",
+      });
+    }
+
+    res.status(200).json({ message: "Friend request canceled." });
+  } catch (err) {
+    console.error("DELETE /api/friend-requests/cancel failed:", err);
+    res.status(500).json({ error: "Could not cancel friend request." });
+  }
+});
+
 // GET /api/friends/:username
 // Returns the user's accepted friends as an array of public profile objects
 // (safe to render on the frontend without further fetching). Returns [] if
