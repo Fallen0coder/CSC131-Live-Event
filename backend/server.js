@@ -826,6 +826,183 @@ app.get("/api/rsvps/:username", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Account settings routes
+// ---------------------------------------------------------------------------
+// These two routes are called from the Settings page on the frontend. They
+// always work against the live MongoDB user (not localStorage), and they
+// always use bcrypt to verify the existing password.
+
+// Helper used by both routes below: looks up a user by email OR username.
+// Returns the User document (with password hash) or null if not found.
+async function findUserByEmailOrUsername(emailOrUsername) {
+  if (typeof emailOrUsername !== "string") return null;
+  const trimmed = emailOrUsername.trim();
+  if (trimmed === "") return null;
+  const lower = trimmed.toLowerCase();
+  // Try email first (matches signup behavior of storing lowercase email),
+  // then fall back to a case-insensitive username lookup.
+  const byEmail = await User.findOne({ email: lower });
+  if (byEmail) return byEmail;
+  return User.findOne({ usernameLower: lower });
+}
+
+// POST /api/settings/change-password
+// Body: { email | username, currentPassword, newPassword, confirmPassword }
+// - Looks up the logged-in user by email OR username.
+// - Verifies currentPassword against the stored bcrypt hash.
+// - Validates newPassword length (>= 8) and that confirmPassword matches.
+// - Hashes the new password with bcrypt and saves it.
+// - Never returns the password (or its hash) in the response.
+app.post("/api/settings/change-password", async (req, res) => {
+  try {
+    const {
+      email,
+      username,
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body || {};
+
+    const identifier = email || username;
+    if (!identifier || !currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        error:
+          "Please provide email (or username), currentPassword, newPassword, and confirmPassword.",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res
+        .status(400)
+        .json({ error: "New password and confirmation do not match." });
+    }
+
+    if (typeof newPassword !== "string" || newPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ error: "New password must be at least 8 characters long." });
+    }
+
+    const user = await findUserByEmailOrUsername(identifier);
+    if (!user) {
+      // Use the same generic error wording as login so we don't leak which
+      // accounts exist.
+      return res
+        .status(401)
+        .json({ error: "Current password is incorrect." });
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) {
+      return res
+        .status(401)
+        .json({ error: "Current password is incorrect." });
+    }
+
+    // Same cost factor as signup so all hashes look consistent.
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.json({
+      message: "Password updated successfully.",
+      user: {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/settings/change-password failed:", err);
+    res.status(500).json({ error: "Could not update password." });
+  }
+});
+
+// DELETE /api/settings/delete-account
+// Body: { email | username, password }
+// - Looks up the user and verifies their password with bcrypt.
+// - Removes the user from MongoDB along with their related data:
+//     * incoming + outgoing friend requests
+//     * direct messages they sent or received
+//     * RSVPs they made
+//     * their username from every other user's `friends` array
+//     * events they created get their creatorUsername blanked out so the
+//       event itself is not lost (other users may have RSVP'd to it).
+// - Never returns the password or the password hash in the response.
+app.delete("/api/settings/delete-account", async (req, res) => {
+  try {
+    const { email, username, password } = req.body || {};
+
+    const identifier = email || username;
+    if (!identifier || !password) {
+      return res.status(400).json({
+        error: "Please provide email (or username) and password.",
+      });
+    }
+
+    const user = await findUserByEmailOrUsername(identifier);
+    if (!user) {
+      return res
+        .status(401)
+        .json({ error: "Password is incorrect." });
+    }
+
+    const matches = await bcrypt.compare(password, user.password);
+    if (!matches) {
+      return res
+        .status(401)
+        .json({ error: "Password is incorrect." });
+    }
+
+    const lowerUsername = user.usernameLower;
+    const userId = user._id;
+
+    // Cascade cleanup. Each step is independent, so we run them in
+    // parallel for speed.
+    await Promise.all([
+      // Friend requests where this user was sender OR receiver.
+      FriendRequest.deleteMany({
+        $or: [
+          { senderUsername: lowerUsername },
+          { receiverUsername: lowerUsername },
+        ],
+      }),
+      // Direct messages they sent or received.
+      Message.deleteMany({
+        $or: [
+          { senderUsername: lowerUsername },
+          { receiverUsername: lowerUsername },
+        ],
+      }),
+      // RSVPs they made.
+      RSVP.deleteMany({ userId: userId }),
+      // Pull this user from every other user's `friends` array.
+      User.updateMany(
+        { friends: lowerUsername },
+        { $pull: { friends: lowerUsername } }
+      ),
+      // Events they created: keep them (other users may have RSVP'd) but
+      // mark the creator as removed so we don't keep showing a name that
+      // no longer exists.
+      Event.updateMany(
+        { creatorUsername: user.username },
+        { $set: { creatorUsername: "[deleted user]" } }
+      ),
+    ]);
+
+    // Finally remove the user document itself.
+    await User.deleteOne({ _id: userId });
+
+    res.json({
+      message: "Account deleted successfully.",
+    });
+  } catch (err) {
+    console.error("DELETE /api/settings/delete-account failed:", err);
+    res.status(500).json({ error: "Could not delete account." });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Messaging routes
 // ---------------------------------------------------------------------------
 

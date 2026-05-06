@@ -2645,9 +2645,35 @@ document.addEventListener("DOMContentLoaded", function () {
 // ===========================================================================
 // 9) SETTINGS PAGE
 // ---------------------------------------------------------------------------
-// All toggles persist to localStorage. Theme buttons highlight whichever
-// theme is currently active.
+// - Each section header is a <button> that expands/collapses its body
+//   (accordion-style). Sections start collapsed for a clean look.
+// - Theme + notification + privacy + accessibility toggles persist to
+//   localStorage (instant client-side preferences).
+// - Password change and account deletion go through the real backend
+//   (MongoDB + bcrypt) — see /api/settings/change-password and
+//   /api/settings/delete-account in server.js.
 // ===========================================================================
+
+// ——— Accordion: collapsible settings sections ———
+// Every .settings-card-header on the settings page is now a <button>.
+// Clicking it toggles the .is-collapsed class on its parent .settings-card,
+// which CSS uses to show/hide the body and rotate the chevron.
+(function setupSettingsAccordion() {
+  const headers = document.querySelectorAll(
+    ".settings-page .settings-card-header"
+  );
+  headers.forEach(function (header) {
+    header.addEventListener("click", function () {
+      const card = header.closest(".settings-card");
+      if (!card) return;
+      const willCollapse = !card.classList.contains("is-collapsed");
+      card.classList.toggle("is-collapsed");
+      // Keep the ARIA state in sync with what the user actually sees.
+      header.setAttribute("aria-expanded", willCollapse ? "false" : "true");
+    });
+  });
+})();
+
 const themeLightBtn = document.getElementById("theme-light-btn");
 const themeDarkBtn = document.getElementById("theme-dark-btn");
 
@@ -2705,12 +2731,20 @@ bindToggleToLocalStorage("a11y-large-text", A11Y_LARGE_TEXT_KEY, false, applyA11
 bindToggleToLocalStorage("a11y-high-contrast", A11Y_HIGH_CONTRAST_KEY, false, applyA11ySettings);
 
 
-// ——— Password reset / change (demo) ———
+// ——— Change password (calls the backend /api/settings/change-password) ———
+// Validates the form, then sends the current + new password to the server,
+// where bcrypt verifies the current one against the stored hash and
+// hashes the new one before saving. We never trust localStorage for this.
 const passwordForm = document.getElementById("password-form");
 const currentPasswordInput = document.getElementById("current-password");
 const newPasswordInput = document.getElementById("new-password");
 const confirmPasswordInput = document.getElementById("confirm-password");
 const passwordMessage = document.getElementById("password-message");
+
+const CHANGE_PASSWORD_API_URL =
+  "http://localhost:3000/api/settings/change-password";
+const DELETE_ACCOUNT_API_URL =
+  "http://localhost:3000/api/settings/delete-account";
 
 function showSettingsMessage(element, message, type) {
   if (!element) return;
@@ -2729,40 +2763,103 @@ if (
 ) {
   passwordForm.addEventListener("submit", function (e) {
     e.preventDefault();
-    const currentPassword = currentPasswordInput.value.trim();
+
+    const currentPassword = currentPasswordInput.value;
     const newPassword = newPasswordInput.value;
     const confirmPassword = confirmPasswordInput.value;
 
-    if (currentPassword === "" || newPassword === "" || confirmPassword === "") {
-      showSettingsMessage(passwordMessage, "Please fill all password fields.", "error");
+    // Quick client-side checks — the backend re-checks all of these,
+    // but doing them here gives instant feedback without a round-trip.
+    if (
+      currentPassword === "" ||
+      newPassword === "" ||
+      confirmPassword === ""
+    ) {
+      showSettingsMessage(
+        passwordMessage,
+        "Please fill all password fields.",
+        "error"
+      );
       return;
     }
-    if (newPassword.length < 6) {
-      showSettingsMessage(passwordMessage, "New password should be at least 6 characters.", "error");
+    if (newPassword.length < 8) {
+      showSettingsMessage(
+        passwordMessage,
+        "New password must be at least 8 characters.",
+        "error"
+      );
       return;
     }
     if (newPassword !== confirmPassword) {
-      showSettingsMessage(passwordMessage, "New password and confirmation do not match.", "error");
+      showSettingsMessage(
+        passwordMessage,
+        "New password and confirmation do not match.",
+        "error"
+      );
       return;
     }
 
-    // Demo: update the password on the currently-logged-in user (if any).
+    // The backend identifies the user by their email or username. We use
+    // whichever one we have on the logged-in user object.
     const current = getCurrentUser();
-    if (current) {
-      const allUsers = getAllUsers();
-      const idx = allUsers.findIndex(function (u) { return u.id === current.id; });
-      if (idx !== -1) {
-        if (allUsers[idx].password !== currentPassword) {
-          showSettingsMessage(passwordMessage, "Current password is incorrect.", "error");
-          return;
-        }
-        allUsers[idx].password = newPassword;
-        saveAllUsers(allUsers);
-      }
+    if (!current || (!current.email && !current.username)) {
+      showSettingsMessage(
+        passwordMessage,
+        "You must be logged in to change your password.",
+        "error"
+      );
+      return;
     }
 
-    showSettingsMessage(passwordMessage, "Password updated successfully (demo).", "success");
-    passwordForm.reset();
+    showSettingsMessage(passwordMessage, "Updating password\u2026", null);
+
+    fetch(CHANGE_PASSWORD_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: current.email || "",
+        username: current.username || "",
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+        confirmPassword: confirmPassword,
+      }),
+    })
+      .then(function (response) {
+        // Always read the JSON body so we can surface the server's error
+        // message verbatim (e.g. "Current password is incorrect.").
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) ||
+            "Could not update password.";
+          showSettingsMessage(passwordMessage, message, "error");
+          return;
+        }
+
+        showSettingsMessage(
+          passwordMessage,
+          "Password updated successfully.",
+          "success"
+        );
+        passwordForm.reset();
+      })
+      .catch(function (err) {
+        console.error("POST /api/settings/change-password failed:", err);
+        showSettingsMessage(
+          passwordMessage,
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+      });
   });
 }
 
@@ -2832,44 +2929,121 @@ if (downloadDataBtn && toolsMessage) {
 }
 
 
-// ——— Danger zone: delete account (simulated) ———
+// ——— Danger zone: delete account (calls the backend) ———
+// The user must type their password into the form first. We send the
+// password to /api/settings/delete-account, which verifies it against the
+// bcrypt hash before removing the user (and their friend requests,
+// messages, RSVPs, friend links) from MongoDB. Only then do we clear
+// localStorage and redirect.
+const deleteAccountForm = document.getElementById("delete-account-form");
 const deleteAccountBtn = document.getElementById("delete-account-btn");
+const deleteConfirmPasswordInput = document.getElementById(
+  "delete-confirm-password"
+);
 const deleteMessage = document.getElementById("delete-message");
 
-if (deleteAccountBtn && deleteMessage) {
-  deleteAccountBtn.addEventListener("click", function () {
+if (deleteAccountForm && deleteAccountBtn && deleteMessage) {
+  deleteAccountForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const password = deleteConfirmPasswordInput
+      ? deleteConfirmPasswordInput.value
+      : "";
+
+    if (password === "") {
+      showSettingsMessage(
+        deleteMessage,
+        "Please type your password to confirm.",
+        "error"
+      );
+      return;
+    }
+
+    const current = getCurrentUser();
+    if (!current || (!current.email && !current.username)) {
+      showSettingsMessage(
+        deleteMessage,
+        "You must be logged in to delete your account.",
+        "error"
+      );
+      return;
+    }
+
+    // Final native confirmation so a stray click can't wipe the account.
     const confirmed = confirm(
-      "Are you sure you want to delete your account? This is a demo and will only clear localStorage values."
+      "This will permanently delete your account from the database. Continue?"
     );
     if (!confirmed) return;
 
-    // Remove the currently-logged-in user from the saved users list.
-    const current = getCurrentUser();
-    if (current) {
-      const remaining = getAllUsers().filter(function (u) { return u.id !== current.id; });
-      saveAllUsers(remaining);
-    }
+    deleteAccountBtn.disabled = true;
+    showSettingsMessage(deleteMessage, "Deleting account\u2026", null);
 
-    // Clear demo "account" + settings + profile data.
-    const keysToRemove = PREFERENCE_KEYS.concat([
-      LOGGED_IN_KEY,
-      CURRENT_USER_KEY,
-      PROFILE_KEY,
-      "liveEventProfileReady" // legacy key from the old profile flow
-    ]);
-    keysToRemove.forEach(function (key) {
-      localStorage.removeItem(key);
-    });
+    fetch(DELETE_ACCOUNT_API_URL, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: current.email || "",
+        username: current.username || "",
+        password: password,
+      }),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) ||
+            "Could not delete account.";
+          showSettingsMessage(deleteMessage, message, "error");
+          deleteAccountBtn.disabled = false;
+          return;
+        }
 
-    applyTheme(getSavedTheme());
-    applyA11ySettings();
-    refreshNavLogoutVisibility();
+        // Account is gone from the database. Now clean up the local
+        // session + cached preferences and send the user away.
+        const keysToRemove = PREFERENCE_KEYS.concat([
+          LOGGED_IN_KEY,
+          CURRENT_USER_KEY,
+          PROFILE_KEY,
+          USERS_KEY,
+          "liveEventProfileReady",
+          "username",
+        ]);
+        keysToRemove.forEach(function (key) {
+          localStorage.removeItem(key);
+        });
 
-    showSettingsMessage(
-      deleteMessage,
-      "Account deleted (simulated). Demo data was cleared from localStorage — no server changes were made.",
-      "success"
-    );
+        applyTheme(getSavedTheme());
+        applyA11ySettings();
+        refreshNavLogoutVisibility();
+
+        showSettingsMessage(
+          deleteMessage,
+          "Account deleted successfully. Redirecting\u2026",
+          "success"
+        );
+
+        setTimeout(function () {
+          window.location.href = "signup.html";
+        }, 1000);
+      })
+      .catch(function (err) {
+        console.error("DELETE /api/settings/delete-account failed:", err);
+        showSettingsMessage(
+          deleteMessage,
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+        deleteAccountBtn.disabled = false;
+      });
   });
 }
 

@@ -31,18 +31,26 @@
     <div class="container settings-layout">
       <header class="settings-header">
         <h2>Settings</h2>
-        <p>Customize your experience. Changes are saved to the database.</p>
+        <p>Customize your experience. Click any section to expand it.</p>
       </header>
 
       <section class="settings-grid" aria-label="Settings sections">
 
         <!-- ——— Theme picker (light / dark with glow indicator) ——— -->
-        <article class="settings-card" aria-labelledby="appearance-heading">
-          <div class="settings-card-header">
-            <h3 id="appearance-heading">Theme</h3>
-            <p class="settings-card-subtitle">The selected option glows.</p>
-          </div>
-          <div class="settings-card-body">
+        <article class="settings-card is-collapsed" aria-labelledby="appearance-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="appearance-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="appearance-heading">Theme</h3>
+              <p class="settings-card-subtitle">The selected option glows.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="appearance-body">
             <div class="theme-picker" role="group" aria-label="Theme picker">
               <button type="button" id="theme-light-btn" class="theme-option" data-theme="light">
                 <span aria-hidden="true">☀</span>
@@ -58,12 +66,20 @@
         </article>
 
         <!-- ——— Notifications ——— -->
-        <article class="settings-card" aria-labelledby="notifications-heading">
-          <div class="settings-card-header">
-            <h3 id="notifications-heading">Notifications</h3>
-            <p class="settings-card-subtitle">Pick what you want to hear about.</p>
-          </div>
-          <div class="settings-card-body">
+        <article class="settings-card is-collapsed" aria-labelledby="notifications-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="notifications-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="notifications-heading">Notifications</h3>
+              <p class="settings-card-subtitle">Pick what you want to hear about.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="notifications-body">
 
             <div class="toggle-row">
               <div>
@@ -123,12 +139,20 @@
         </article>
 
         <!-- ——— Privacy ——— -->
-        <article class="settings-card" aria-labelledby="privacy-heading">
-          <div class="settings-card-header">
-            <h3 id="privacy-heading">Privacy</h3>
-            <p class="settings-card-subtitle">Control what others can see.</p>
-          </div>
-          <div class="settings-card-body">
+        <article class="settings-card is-collapsed" aria-labelledby="privacy-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="privacy-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="privacy-heading">Privacy</h3>
+              <p class="settings-card-subtitle">Control what others can see.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="privacy-body">
 
             <div class="toggle-row">
               <div>
@@ -177,12 +201,20 @@
         </article>
 
         <!-- ——— Accessibility ——— -->
-        <article class="settings-card" aria-labelledby="a11y-heading">
-          <div class="settings-card-header">
-            <h3 id="a11y-heading">Accessibility</h3>
-            <p class="settings-card-subtitle">Make the app easier to use.</p>
-          </div>
-          <div class="settings-card-body">
+        <article class="settings-card is-collapsed" aria-labelledby="a11y-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="a11y-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="a11y-heading">Accessibility</h3>
+              <p class="settings-card-subtitle">Make the app easier to use.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="a11y-body">
 
             <div class="toggle-row">
               <div>
@@ -219,27 +251,69 @@
           </div>
         </article>
 
-        <!-- ——— Account: password change (demo) ——— -->
-        <article class="settings-card" aria-labelledby="account-heading">
-          <div class="settings-card-header">
-            <h3 id="account-heading">Account Settings</h3>
-            <p class="settings-card-subtitle">Demo password change (saved to localStorage).</p>
-          </div>
-          <div class="settings-card-body">
+        <!-- ——— Account: change password (saved to MongoDB) ——— -->
+        <article class="settings-card is-collapsed" aria-labelledby="account-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="account-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="account-heading">Account Settings</h3>
+              <p class="settings-card-subtitle">Change your password (saved securely to the database).</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="account-body">
             <form id="password-form" class="settings-form">
               <div class="form-field">
                 <label for="current-password">Current password</label>
-                <input type="password" id="current-password" autocomplete="current-password" />
+                <div class="password-wrapper">
+                  <input type="password" id="current-password" autocomplete="current-password" />
+                  <button
+                    type="button"
+                    class="password-toggle"
+                    data-password-toggle="current-password"
+                    aria-label="Show password"
+                    aria-pressed="false"
+                  >
+                    <span class="password-toggle-icon" aria-hidden="true">👁️</span>
+                  </button>
+                </div>
               </div>
 
               <div class="form-field">
                 <label for="new-password">New password</label>
-                <input type="password" id="new-password" autocomplete="new-password" />
+                <div class="password-wrapper">
+                  <input type="password" id="new-password" autocomplete="new-password" />
+                  <button
+                    type="button"
+                    class="password-toggle"
+                    data-password-toggle="new-password"
+                    aria-label="Show password"
+                    aria-pressed="false"
+                  >
+                    <span class="password-toggle-icon" aria-hidden="true">👁️</span>
+                  </button>
+                </div>
+                <p class="password-hint">Use at least 8 characters.</p>
               </div>
 
               <div class="form-field">
                 <label for="confirm-password">Confirm new password</label>
-                <input type="password" id="confirm-password" autocomplete="new-password" />
+                <div class="password-wrapper">
+                  <input type="password" id="confirm-password" autocomplete="new-password" />
+                  <button
+                    type="button"
+                    class="password-toggle"
+                    data-password-toggle="confirm-password"
+                    aria-label="Show password"
+                    aria-pressed="false"
+                  >
+                    <span class="password-toggle-icon" aria-hidden="true">👁️</span>
+                  </button>
+                </div>
               </div>
 
               <button type="submit" class="login-submit-btn">Update password</button>
@@ -249,12 +323,20 @@
         </article>
 
         <!-- ——— Account tools ——— -->
-        <article class="settings-card" aria-labelledby="tools-heading">
-          <div class="settings-card-header">
-            <h3 id="tools-heading">Account tools</h3>
-            <p class="settings-card-subtitle">Reset preferences or download your data.</p>
-          </div>
-          <div class="settings-card-body">
+        <article class="settings-card is-collapsed" aria-labelledby="tools-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="tools-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="tools-heading">Account Tools</h3>
+              <p class="settings-card-subtitle">Reset preferences or download your data.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="tools-body">
             <div class="settings-actions">
               <button type="button" id="clear-prefs-btn" class="btn btn-secondary settings-btn">
                 Clear saved preferences
@@ -268,20 +350,52 @@
         </article>
 
         <!-- ——— Danger zone ——— -->
-        <article class="settings-card settings-card-danger" aria-labelledby="danger-heading">
-          <div class="settings-card-header">
-            <h3 id="danger-heading">Danger Zone</h3>
-            <p class="settings-card-subtitle">This is a demo — actions are simulated.</p>
-          </div>
-          <div class="settings-card-body">
+        <article class="settings-card settings-card-danger is-collapsed" aria-labelledby="danger-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="danger-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="danger-heading">Danger Zone</h3>
+              <p class="settings-card-subtitle">Permanently delete your account.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="danger-body">
             <p class="settings-hint">
-              Deleting an account would normally remove your data from a server. Since this project
-              has no backend (yet), we only simulate deletion by clearing your demo data from localStorage.
+              This will permanently remove your account, your friend
+              connections, your messages, and your RSVPs from the database.
+              This cannot be undone.
             </p>
-            <button type="button" id="delete-account-btn" class="danger-btn">
-              Delete account
-            </button>
-            <p id="delete-message" class="settings-message" role="status" aria-live="polite"></p>
+
+            <form id="delete-account-form" class="settings-form">
+              <div class="form-field">
+                <label for="delete-confirm-password">Type your password to confirm</label>
+                <div class="password-wrapper">
+                  <input
+                    type="password"
+                    id="delete-confirm-password"
+                    autocomplete="current-password"
+                    placeholder="Your current password"
+                  />
+                  <button
+                    type="button"
+                    class="password-toggle"
+                    data-password-toggle="delete-confirm-password"
+                    aria-label="Show password"
+                    aria-pressed="false"
+                  >
+                    <span class="password-toggle-icon" aria-hidden="true">👁️</span>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" id="delete-account-btn" class="danger-btn">
+                Delete my account
+              </button>
+              <p id="delete-message" class="settings-message" role="status" aria-live="polite"></p>
+            </form>
           </div>
         </article>
       </section>
