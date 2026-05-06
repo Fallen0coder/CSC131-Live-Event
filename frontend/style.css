@@ -2907,3 +2907,144 @@ body.is-editing-profile .profile-display-only {
     max-width: 180px;
   }
 }
+
+/* ===========================================================================
+   ADMIN KEY FEATURE
+   ---------------------------------------------------------------------------
+   Styles for:
+     • The Admin Key card on the Settings page (status panel + form).
+     • The Delete Event button rendered on event cards for admin users only.
+   Designed to match the existing dark UI by reusing the same color
+   variables and the same look-and-feel as the danger-zone button.
+   =========================================================================== */
+
+/* Wrapper around RSVP + admin Delete buttons at the bottom of an event
+   card. Keeps both buttons aligned on the same row and gracefully wraps
+   on narrow screens. */
+.event-card-actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* The .rsvp-btn already had margin-top:auto so it pushed itself to the
+   bottom of the flex card. Now that it lives inside .event-card-actions
+   the wrapper handles the spacing — clear the redundant margin so both
+   buttons sit on the same line. */
+.event-card-actions .rsvp-btn {
+  margin-top: 0;
+}
+
+/* Admin-only "Delete event" button. Visually distinct from the main
+   blue/green RSVP button so it never looks like a normal action. */
+.admin-delete-btn {
+  border: 1px solid rgba(185, 28, 28, 0.4);
+  background: transparent;
+  color: #b91c1c;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease,
+    transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-delete-btn:hover:not(:disabled) {
+  background: #b91c1c;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.32);
+}
+
+.admin-delete-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+body.theme-dark .admin-delete-btn {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fca5a5;
+}
+
+body.theme-dark .admin-delete-btn:hover:not(:disabled) {
+  background: #ef4444;
+  color: #ffffff;
+}
+
+/* Settings page — the "Admin mode is currently active" panel. Highlighted
+   with a soft amber/gold accent so admin status feels distinct from the
+   normal blue UI without being alarming like the red danger zone. */
+.admin-status-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.95rem 1rem;
+  border-radius: var(--radius-md);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.32);
+}
+
+.admin-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.admin-status-badge {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: #f59e0b;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1rem;
+  box-shadow: 0 4px 10px rgba(245, 158, 11, 0.35);
+}
+
+.admin-status-title {
+  font-weight: 700;
+  color: #92400e;
+  font-size: 1rem;
+}
+
+.admin-status-subtitle {
+  margin-top: 0.25rem;
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.admin-status-subtitle strong {
+  color: var(--color-text);
+}
+
+body.theme-dark .admin-status-panel {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+body.theme-dark .admin-status-title {
+  color: #fbbf24;
+}
+
+/* Inline <code> styling for the helper text inside the Admin Key form. */
+#admin-key-form code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.88em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(37, 99, 235, 0.1);
+  color: var(--color-primary-dark);
+}
+
+body.theme-dark #admin-key-form code {
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+}

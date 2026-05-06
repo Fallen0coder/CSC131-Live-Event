@@ -322,6 +322,92 @@
           </div>
         </article>
 
+        <!-- ——— Admin Key (account-level, separate from password) ——— -->
+        <!--
+          Lets a logged-in user type the secret admin key to unlock admin
+          permissions. The key itself NEVER lives in this HTML or in
+          script.js — the typed value is sent to the backend, which
+          compares it to ADMIN_KEY in backend/.env. The backend updates
+          the user's `role` in MongoDB and returns the safe user object.
+
+          Exit Admin Mode is shown only when the logged-in user already
+          has role === "admin". It removes admin permissions WITHOUT
+          logging the user out (different from the Log out button in the
+          navbar — see the helper text).
+        -->
+        <article class="settings-card is-collapsed" aria-labelledby="admin-key-heading">
+          <button
+            type="button"
+            class="settings-card-header"
+            aria-expanded="false"
+            aria-controls="admin-key-body"
+          >
+            <div class="settings-card-header-text">
+              <h3 id="admin-key-heading">Admin Key</h3>
+              <p class="settings-card-subtitle">Unlock admin tools with a secret key.</p>
+            </div>
+            <span class="settings-card-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="settings-card-body" id="admin-key-body">
+            <!--
+              The "currently active" panel is shown only when the logged-in
+              user's role is "admin". script.js toggles .is-hidden on these
+              two panels based on the user's role at page load and after
+              each successful unlock/exit action.
+            -->
+            <div id="admin-status-panel" class="admin-status-panel is-hidden">
+              <div class="admin-status-row">
+                <span class="admin-status-badge" aria-hidden="true">★</span>
+                <div>
+                  <p class="admin-status-title">Admin mode is currently active.</p>
+                  <p class="admin-status-subtitle">
+                    You can see admin-only controls (like the Delete Event
+                    button on the Events page).
+                    <strong>Note:</strong> exiting admin mode is NOT the same
+                    as logging out — your account stays signed in.
+                  </p>
+                </div>
+              </div>
+              <button type="button" id="exit-admin-btn" class="btn btn-secondary settings-btn">
+                Exit Admin Mode
+              </button>
+            </div>
+
+            <!-- The unlock panel is shown when the user is NOT an admin. -->
+            <form id="admin-key-form" class="settings-form" autocomplete="off">
+              <p class="settings-hint">
+                Type the secret admin key to unlock admin features. Keep
+                this key private — it's read from a server-side
+                <code>.env</code> file and never exposed to the browser.
+              </p>
+              <div class="form-field">
+                <label for="admin-key-input">Admin key</label>
+                <div class="password-wrapper">
+                  <input
+                    type="password"
+                    id="admin-key-input"
+                    autocomplete="off"
+                    placeholder="Enter the admin key"
+                  />
+                  <button
+                    type="button"
+                    class="password-toggle"
+                    data-password-toggle="admin-key-input"
+                    aria-label="Show admin key"
+                    aria-pressed="false"
+                  >
+                    <span class="password-toggle-icon" aria-hidden="true">👁️</span>
+                  </button>
+                </div>
+              </div>
+              <button type="submit" id="admin-key-submit-btn" class="login-submit-btn">
+                Unlock Admin Mode
+              </button>
+              <p id="admin-key-message" class="settings-message" role="status" aria-live="polite"></p>
+            </form>
+          </div>
+        </article>
+
         <!-- ——— Account tools ——— -->
         <article class="settings-card is-collapsed" aria-labelledby="tools-heading">
           <button

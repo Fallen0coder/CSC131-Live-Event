@@ -193,6 +193,56 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
+// DELETE /api/events/:id
+// Admin-only. Body: { requesterEmail | requesterUsername }
+// - Verifies the requester exists AND has role === "admin" in MongoDB.
+//   We never trust a `role` field sent from the client — it's always
+//   re-checked against the database here.
+// - Also cleans up any RSVPs that pointed at this event so we don't leave
+//   orphaned records behind.
+app.delete("/api/events/:id", async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ error: "Invalid event id." });
+    }
+
+    const { requesterEmail, requesterUsername } = req.body || {};
+    const identifier = requesterEmail || requesterUsername;
+    if (!identifier) {
+      return res.status(400).json({
+        error: "Please provide requesterEmail or requesterUsername.",
+      });
+    }
+
+    const requester = await findUserByEmailOrUsername(identifier);
+    if (!requester) {
+      return res.status(401).json({ error: "Requester not found." });
+    }
+    if (requester.role !== "admin") {
+      // Server-side gate: even if the frontend tried to call this route
+      // for a non-admin user, the database is the source of truth.
+      return res
+        .status(403)
+        .json({ error: "Admin permission required to delete events." });
+    }
+
+    const deleted = await Event.findByIdAndDelete(eventId);
+    if (!deleted) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    // Tidy up RSVPs that referenced this event so the user's "events I'm
+    // going to" lists stay consistent.
+    await RSVP.deleteMany({ eventId: eventId });
+
+    res.json({ message: "Event deleted." });
+  } catch (err) {
+    console.error("DELETE /api/events/:id failed:", err);
+    res.status(500).json({ error: "Could not delete event." });
+  }
+});
+
 // POST /api/signup
 // Registers a new user. Expects JSON body: { name, username, email, password }.
 // - Hashes the password with bcrypt.
@@ -240,15 +290,12 @@ app.post("/api/signup", async (req, res) => {
       password: hashedPassword,
     });
 
-    // Note: we never include `password` in the response.
+    // Note: we never include `password` in the response. New accounts
+    // always start with role "user"; admins are unlocked later through
+    // /api/settings/admin-key.
     res.status(201).json({
       message: "Signup successful.",
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        username: newUser.username,
-        email: newUser.email,
-      },
+      user: safeUser(newUser),
     });
   } catch (err) {
     // Race condition fallback: rely on the unique indexes if two requests
@@ -740,14 +787,11 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
+    // Include `role` so the frontend knows whether to show admin
+    // controls right after login (without an extra round-trip).
     res.json({
       message: "Login successful.",
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-      },
+      user: safeUser(user),
     });
   } catch (err) {
     console.error("POST /api/login failed:", err);
@@ -921,12 +965,25 @@ app.get("/api/rsvps/:username", async (req, res) => {
 // ---------------------------------------------------------------------------
 // Account settings routes
 // ---------------------------------------------------------------------------
-// These two routes are called from the Settings page on the frontend. They
+// These routes are called from the Settings page on the frontend. They
 // always work against the live MongoDB user (not localStorage), and they
-// always use bcrypt to verify the existing password.
+// always use bcrypt to verify any password the user types in.
 
-// Helper used by both routes below: looks up a user by email OR username.
-// Returns the User document (with password hash) or null if not found.
+// Builds the safe user object we send back to the frontend after auth or
+// settings actions. Includes `role` so the frontend knows whether to show
+// admin-only controls. NEVER includes the password (or its hash).
+function safeUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    role: user.role || "user",
+  };
+}
+
+// Helper used by the settings routes below: looks up a user by email OR
+// username. Returns the User document (with password hash) or null.
 async function findUserByEmailOrUsername(emailOrUsername) {
   if (typeof emailOrUsername !== "string") return null;
   const trimmed = emailOrUsername.trim();
@@ -998,16 +1055,106 @@ app.post("/api/settings/change-password", async (req, res) => {
 
     res.json({
       message: "Password updated successfully.",
-      user: {
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        email: user.email,
-      },
+      user: safeUser(user),
     });
   } catch (err) {
     console.error("POST /api/settings/change-password failed:", err);
     res.status(500).json({ error: "Could not update password." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin key routes
+// ---------------------------------------------------------------------------
+// The admin key itself lives in backend/.env as ADMIN_KEY. The frontend
+// only ever sends the key the user typed — it never knows the real value.
+// We compare the typed key to process.env.ADMIN_KEY here, on the server,
+// and ONLY then promote the user's role to "admin" in MongoDB.
+
+// POST /api/settings/admin-key
+// Body: { email | username, adminKey }
+// - Looks up the logged-in user.
+// - Compares adminKey against process.env.ADMIN_KEY.
+// - If it matches, sets user.role = "admin" and returns the safe user.
+// - Otherwise returns 403 "Invalid admin key."
+app.post("/api/settings/admin-key", async (req, res) => {
+  try {
+    const { email, username, adminKey } = req.body || {};
+
+    const identifier = email || username;
+    if (!identifier || typeof adminKey !== "string" || adminKey === "") {
+      return res.status(400).json({
+        error: "Please provide email (or username) and adminKey.",
+      });
+    }
+
+    const expectedKey = process.env.ADMIN_KEY;
+    if (!expectedKey) {
+      // Fail loudly in the server log but stay vague for the client so we
+      // don't leak the fact that the env file is misconfigured.
+      console.error(
+        "ADMIN_KEY is not set in backend/.env — admin unlock disabled."
+      );
+      return res.status(500).json({
+        error: "Admin key feature is not configured on the server.",
+      });
+    }
+
+    const user = await findUserByEmailOrUsername(identifier);
+    if (!user) {
+      // Use a generic 401 so we don't reveal whether the account exists.
+      return res.status(401).json({ error: "User not found." });
+    }
+
+    // Strict equality — the typed key has to match the env value exactly.
+    if (adminKey !== expectedKey) {
+      return res.status(403).json({ error: "Invalid admin key." });
+    }
+
+    user.role = "admin";
+    await user.save();
+
+    res.json({
+      message: "Admin mode unlocked.",
+      user: safeUser(user),
+    });
+  } catch (err) {
+    console.error("POST /api/settings/admin-key failed:", err);
+    res.status(500).json({ error: "Could not unlock admin mode." });
+  }
+});
+
+// POST /api/settings/exit-admin
+// Body: { email | username }
+// - Looks up the user and sets user.role = "user".
+// - Returns the updated safe user.
+// - This does NOT log the user out — it only removes admin privileges.
+app.post("/api/settings/exit-admin", async (req, res) => {
+  try {
+    const { email, username } = req.body || {};
+
+    const identifier = email || username;
+    if (!identifier) {
+      return res.status(400).json({
+        error: "Please provide email (or username).",
+      });
+    }
+
+    const user = await findUserByEmailOrUsername(identifier);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    user.role = "user";
+    await user.save();
+
+    res.json({
+      message: "Admin mode turned off.",
+      user: safeUser(user),
+    });
+  } catch (err) {
+    console.error("POST /api/settings/exit-admin failed:", err);
+    res.status(500).json({ error: "Could not exit admin mode." });
   }
 });
 

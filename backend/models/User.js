@@ -53,6 +53,20 @@ const userSchema = new mongoose.Schema({
     default: [],
   },
 
+  // Permission level for this user.
+  // - "user"  : a normal account (the default for everyone who signs up).
+  // - "admin" : unlocked by typing the secret ADMIN_KEY in Settings, which
+  //             is verified server-side in /api/settings/admin-key.
+  // The frontend reads this off the user object and only shows admin
+  // controls (e.g. "Delete event") when role === "admin". The backend
+  // ALSO re-checks role in the database before honoring any admin-only
+  // operation, so the frontend can never grant itself admin powers.
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
+  },
+
   password: { type: String, required: true },
 });
 

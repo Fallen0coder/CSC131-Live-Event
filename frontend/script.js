@@ -118,6 +118,14 @@ function setCurrentUser(user) {
   localStorage.setItem(LOGGED_IN_KEY, "true");
 }
 
+// Returns true if the logged-in user is an admin (per the cached role on
+// the user object). The backend ALWAYS re-checks role on admin-only
+// routes — this helper just decides whether to show or hide UI.
+function isCurrentUserAdmin() {
+  const user = getCurrentUser();
+  return !!(user && user.role === "admin");
+}
+
 function logout() {
   localStorage.removeItem(LOGGED_IN_KEY);
   localStorage.removeItem(CURRENT_USER_KEY);
@@ -688,7 +696,21 @@ document.addEventListener("DOMContentLoaded", function () {
         "</p>";
     }
 
+    html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
+    // Admin-only Delete button. We re-check the current user on every
+    // render (instead of caching once at page load) so the button reacts
+    // immediately if the user just unlocked or exited admin mode in
+    // another tab. The backend ALSO re-verifies role in MongoDB before
+    // honoring the delete, so this UI gate is purely cosmetic.
+    if (isCurrentUserAdmin() && event.id) {
+      html +=
+        "<button class='admin-delete-btn' type='button' " +
+          "data-admin-delete-id='" + escapeHtml(event.id) + "'>" +
+          "Delete event" +
+        "</button>";
+    }
+    html += "</div>";
     card.innerHTML = html;
 
     const rsvpButton = card.querySelector(".rsvp-btn");
@@ -713,7 +735,86 @@ document.addEventListener("DOMContentLoaded", function () {
         sendRsvp(rsvpButton, event);
       });
     }
+
+    // Admin-only Delete button click. Wired here so each card owns its
+    // own handler and we don't need a fragile event-delegation listener.
+    const adminDeleteBtn = card.querySelector(".admin-delete-btn");
+    if (adminDeleteBtn) {
+      adminDeleteBtn.addEventListener("click", function (clickEvent) {
+        clickEvent.preventDefault();
+        deleteEventAsAdmin(event, card, adminDeleteBtn);
+      });
+    }
     return card;
+  }
+
+  // DELETE /api/events/:id — admin-only on the backend. We send the
+  // logged-in user's email/username so the server can re-verify their
+  // role in MongoDB. The frontend role check is just for the UI; the
+  // backend is the real gatekeeper.
+  function deleteEventAsAdmin(event, card, button) {
+    const user = getCurrentUser();
+    if (!user || user.role !== "admin") {
+      showEventsBanner(
+        "Admin permission required to delete events.",
+        "error"
+      );
+      return;
+    }
+    if (!event || !event.id) return;
+
+    const ok = confirm(
+      "Delete this event? This removes it for everyone and cannot be undone."
+    );
+    if (!ok) return;
+
+    button.disabled = true;
+    const originalLabel = button.textContent;
+    button.textContent = "Deleting\u2026";
+
+    fetch(EVENTS_API_URL + "/" + encodeURIComponent(event.id), {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requesterEmail: user.email || "",
+        requesterUsername: user.username || "",
+      }),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) || "Could not delete event.";
+          showEventsBanner(message, "error");
+          button.disabled = false;
+          button.textContent = originalLabel;
+          return;
+        }
+
+        // Success — remove the card from the DOM and let the user know.
+        if (card && card.parentNode) {
+          card.parentNode.removeChild(card);
+        }
+        showEventsBanner("Event deleted.", "success");
+      })
+      .catch(function (err) {
+        console.error("DELETE /api/events/:id failed:", err);
+        showEventsBanner(
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+        button.disabled = false;
+        button.textContent = originalLabel;
+      });
   }
 
   function showLoadingState() {
@@ -922,11 +1023,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
         // Save the logged-in user. We keep the field name `fullName` for
         // the rest of the app, mapping it from the backend's `name` field.
+        // `role` defaults to "user" if the backend doesn't return one
+        // (e.g. an older response shape) so admin-only UI stays hidden.
         setCurrentUser({
           id: user.id,
           fullName: user.name,
           username: user.username,
-          email: user.email
+          email: user.email,
+          role: user.role || "user"
         });
         localStorage.setItem("username", user.username);
 
@@ -1052,12 +1156,15 @@ document.addEventListener("DOMContentLoaded", function () {
         const user = (result.data && result.data.user) || {};
 
         // Save the logged-in user. The backend returns `name`, but the
-        // rest of the app uses `fullName` — map it here.
+        // rest of the app uses `fullName` — map it here. New accounts
+        // always start with role "user"; admin is unlocked via the
+        // Admin Key section in Settings.
         setCurrentUser({
           id: user.id,
           fullName: user.name,
           username: user.username,
-          email: user.email
+          email: user.email,
+          role: user.role || "user"
         });
         localStorage.setItem("username", user.username);
 
@@ -3627,6 +3734,212 @@ if (
         console.error("POST /api/settings/change-password failed:", err);
         showSettingsMessage(
           passwordMessage,
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+      });
+  });
+}
+
+
+// ——— Admin Key (calls /api/settings/admin-key + /api/settings/exit-admin) ———
+// The user types a secret key into a password-style input. We POST the typed
+// key (NEVER hard-coded here!) to the backend, which compares it to
+// process.env.ADMIN_KEY. If it matches, MongoDB stores role="admin" for the
+// user, and we mirror that into localStorage so admin-only UI shows up.
+//
+// Exit Admin Mode does the inverse: it POSTs to /api/settings/exit-admin,
+// which sets the role back to "user" in MongoDB and returns the updated
+// user. We DO NOT log the user out — only the role changes.
+const adminKeyForm = document.getElementById("admin-key-form");
+const adminKeyInput = document.getElementById("admin-key-input");
+const adminKeySubmitBtn = document.getElementById("admin-key-submit-btn");
+const adminKeyMessage = document.getElementById("admin-key-message");
+const adminStatusPanel = document.getElementById("admin-status-panel");
+const exitAdminBtn = document.getElementById("exit-admin-btn");
+
+const ADMIN_KEY_API_URL = "http://localhost:3000/api/settings/admin-key";
+const EXIT_ADMIN_API_URL = "http://localhost:3000/api/settings/exit-admin";
+
+// Show the right panel (active vs unlock form) based on the current role.
+// Called once on page load and again after every successful action so the
+// UI never goes stale.
+function refreshAdminSettingsUi() {
+  if (!adminStatusPanel || !adminKeyForm) return;
+  const isAdmin = isCurrentUserAdmin();
+  adminStatusPanel.classList.toggle("is-hidden", !isAdmin);
+  adminKeyForm.classList.toggle("is-hidden", isAdmin);
+}
+
+// Run once on page load so the section opens in the right state.
+refreshAdminSettingsUi();
+
+if (adminKeyForm && adminKeyInput && adminKeySubmitBtn && adminKeyMessage) {
+  adminKeyForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    const adminKey = adminKeyInput.value;
+    if (!adminKey) {
+      showSettingsMessage(
+        adminKeyMessage,
+        "Please type the admin key.",
+        "error"
+      );
+      return;
+    }
+
+    const current = getCurrentUser();
+    if (!current || (!current.email && !current.username)) {
+      showSettingsMessage(
+        adminKeyMessage,
+        "You must be logged in to unlock admin mode.",
+        "error"
+      );
+      return;
+    }
+
+    adminKeySubmitBtn.disabled = true;
+    showSettingsMessage(adminKeyMessage, "Checking key\u2026", null);
+
+    fetch(ADMIN_KEY_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        // The key the user typed — NEVER hard-coded here. Only the
+        // backend knows the real value (loaded from backend/.env).
+        adminKey: adminKey,
+        email: current.email || "",
+        username: current.username || "",
+      }),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        adminKeySubmitBtn.disabled = false;
+
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) || "Invalid admin key.";
+          showSettingsMessage(adminKeyMessage, message, "error");
+          return;
+        }
+
+        // Server confirmed the key. Mirror the new role into the local
+        // user object so admin-only UI shows up immediately, on every
+        // page that reads getCurrentUser().
+        const updated = (result.data && result.data.user) || {};
+        const merged = Object.assign({}, current, {
+          // Keep our local field naming convention (`fullName`).
+          fullName: updated.name || current.fullName,
+          username: updated.username || current.username,
+          email: updated.email || current.email,
+          id: updated.id || current.id,
+          role: updated.role || "admin",
+        });
+        setCurrentUser(merged);
+
+        adminKeyInput.value = "";
+        showSettingsMessage(
+          adminKeyMessage,
+          (result.data && result.data.message) || "Admin mode unlocked.",
+          "success"
+        );
+
+        // Update the visible UI: hide the form, show the active panel,
+        // and refresh the navbar in case anything depends on role.
+        refreshAdminSettingsUi();
+        refreshNavAuthVisibility();
+      })
+      .catch(function (err) {
+        console.error("POST /api/settings/admin-key failed:", err);
+        adminKeySubmitBtn.disabled = false;
+        showSettingsMessage(
+          adminKeyMessage,
+          "Could not reach the server. Please try again later.",
+          "error"
+        );
+      });
+  });
+}
+
+if (exitAdminBtn && adminKeyMessage) {
+  exitAdminBtn.addEventListener("click", function () {
+    const current = getCurrentUser();
+    if (!current || (!current.email && !current.username)) {
+      showSettingsMessage(
+        adminKeyMessage,
+        "You must be logged in to change admin mode.",
+        "error"
+      );
+      return;
+    }
+
+    exitAdminBtn.disabled = true;
+    showSettingsMessage(adminKeyMessage, "Turning off admin mode\u2026", null);
+
+    fetch(EXIT_ADMIN_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: current.email || "",
+        username: current.username || "",
+      }),
+    })
+      .then(function (response) {
+        return response
+          .json()
+          .then(function (data) {
+            return { ok: response.ok, data: data };
+          })
+          .catch(function () {
+            return { ok: response.ok, data: {} };
+          });
+      })
+      .then(function (result) {
+        exitAdminBtn.disabled = false;
+
+        if (!result.ok) {
+          const message =
+            (result.data && result.data.error) ||
+            "Could not exit admin mode.";
+          showSettingsMessage(adminKeyMessage, message, "error");
+          return;
+        }
+
+        // Mirror the new role locally. Importantly we do NOT log out —
+        // the rest of the user's session stays intact.
+        const updated = (result.data && result.data.user) || {};
+        const merged = Object.assign({}, current, {
+          fullName: updated.name || current.fullName,
+          username: updated.username || current.username,
+          email: updated.email || current.email,
+          id: updated.id || current.id,
+          role: updated.role || "user",
+        });
+        setCurrentUser(merged);
+
+        showSettingsMessage(
+          adminKeyMessage,
+          (result.data && result.data.message) || "Admin mode turned off.",
+          "success"
+        );
+
+        refreshAdminSettingsUi();
+        refreshNavAuthVisibility();
+      })
+      .catch(function (err) {
+        console.error("POST /api/settings/exit-admin failed:", err);
+        exitAdminBtn.disabled = false;
+        showSettingsMessage(
+          adminKeyMessage,
           "Could not reach the server. Please try again later.",
           "error"
         );
