@@ -107,6 +107,54 @@
       <!-- Status message after save -->
       <p id="profile-message" class="settings-message" role="status" aria-live="polite"></p>
 
+      <!--
+        Profile picture:
+        - Upload: Base64 via FileReader, PUT .../picture with profilePictureType "uploaded".
+        - Defaults: PUT with profilePictureType "default" and an avatar id.
+        - On load: GET /api/profile/:username fills pictureState from MongoDB.
+      -->
+      <section class="profile-card-block avatar-card" aria-labelledby="avatar-heading">
+        <h3 id="avatar-heading">Profile picture</h3>
+        <p class="avatar-helper">
+          Your avatar appears next to your name above. Upload a photo or pick a default below.
+        </p>
+
+        <div class="avatar-upload-row">
+          <button
+            type="button"
+            id="avatar-upload-btn"
+            class="btn btn-secondary avatar-upload-btn"
+            aria-describedby="avatar-upload-hint"
+          >
+            Upload an image
+          </button>
+          <input
+            type="file"
+            id="avatar-upload-input"
+            accept="image/*"
+            hidden
+          />
+          <span class="avatar-upload-hint" id="avatar-upload-hint">
+            Images only (e.g. JPG, PNG). Max 5 MB.
+          </span>
+        </div>
+
+        <p class="avatar-divider"><span>or pick a default</span></p>
+
+        <div
+          id="avatar-grid"
+          class="avatar-grid"
+          role="group"
+          aria-label="Default avatar choices"
+        ></div>
+        <p
+          id="avatar-message"
+          class="avatar-message"
+          role="status"
+          aria-live="polite"
+        ></p>
+      </section>
+
       <!-- Personal info card -->
       <section class="profile-card-block" aria-labelledby="info-heading">
         <h3 id="info-heading">Personal info</h3>

@@ -1495,6 +1495,45 @@ function saveProfile(profile) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
 }
 
+// --- Default profile pictures (emoji shown in UI; id sent to the API) ---
+// profilePicture in MongoDB stores the `id` string with profilePictureType "default".
+var DEFAULT_AVATARS = [
+  { id: "heart", emoji: "\u2764\uFE0F", label: "Heart" },
+  { id: "tree", emoji: "\uD83C\uDF33", label: "Tree" },
+  { id: "star", emoji: "\u2B50", label: "Star" },
+  { id: "music", emoji: "\uD83C\uDFB5", label: "Music" },
+  { id: "game", emoji: "\uD83C\uDFAE", label: "Game" },
+  { id: "book", emoji: "\uD83D\uDCDA", label: "Book" },
+  { id: "moon", emoji: "\uD83C\uDF19", label: "Moon" },
+  { id: "fire", emoji: "\uD83D\uDD25", label: "Fire" },
+];
+
+function getDefaultAvatar(id) {
+  if (!id) return null;
+  for (var i = 0; i < DEFAULT_AVATARS.length; i++) {
+    if (DEFAULT_AVATARS[i].id === id) return DEFAULT_AVATARS[i];
+  }
+  return null;
+}
+
+// Same host as other fetch calls in this file (absolute URL works with file:// opens too).
+var PROFILE_API_URL = "http://localhost:3000/api/profile";
+
+function friendlyFetchErrorMessage(err) {
+  var looksNetwork =
+    err instanceof TypeError ||
+    (err &&
+      typeof err.message === "string" &&
+      /failed to fetch|network|load failed/i.test(err.message));
+  if (looksNetwork) {
+    return "Could not reach backend. Make sure the server is running.";
+  }
+  if (err && typeof err.message === "string" && err.message !== "") {
+    return err.message;
+  }
+  return "Could not save profile picture.";
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   const profileMain = document.querySelector(".profile-main");
   if (!profileMain) return; // Not on the profile page.
@@ -1526,6 +1565,369 @@ document.addEventListener("DOMContentLoaded", function () {
   const displayHobbies = document.getElementById("display-hobbies");
   const displayHobbiesEmpty = document.getElementById("display-hobbies-empty");
   const avatarEl = document.getElementById("profile-avatar");
+  const avatarGridEl = document.getElementById("avatar-grid");
+  const avatarMessageEl = document.getElementById("avatar-message");
+
+  // Tracks what MongoDB has for this user's picture (updated after GET / PUT).
+  var pictureState = (function readCachedPicture() {
+    var u = getCurrentUser();
+    return {
+      profilePicture: (u && u.profilePicture) || "",
+      profilePictureType: (u && u.profilePictureType) || "default",
+    };
+  })();
+
+  function initialLetterForProfile(profile) {
+    var source = (profile && (profile.fullName || profile.username)) || "U";
+    var ch = String(source).trim().charAt(0);
+    return (ch || "U").toUpperCase();
+  }
+
+  // Updates the big circle next to the user's name (matches MongoDB type).
+  function renderHeaderAvatar(profile) {
+    if (!avatarEl) return;
+
+    avatarEl.classList.remove("has-emoji", "has-image");
+    avatarEl.style.backgroundImage = "";
+
+    if (
+      pictureState.profilePictureType === "uploaded" &&
+      typeof pictureState.profilePicture === "string" &&
+      pictureState.profilePicture.trim() !== ""
+    ) {
+      var safeUrl = pictureState.profilePicture.replace(/"/g, '\\"');
+      avatarEl.style.backgroundImage = 'url("' + safeUrl + '")';
+      avatarEl.classList.add("has-image");
+      avatarEl.textContent = "";
+      return;
+    }
+
+    if (pictureState.profilePictureType === "default") {
+      var def = getDefaultAvatar(pictureState.profilePicture);
+      if (def) {
+        avatarEl.textContent = def.emoji;
+        avatarEl.classList.add("has-emoji");
+        return;
+      }
+    }
+
+    avatarEl.textContent = initialLetterForProfile(profile);
+  }
+
+  function setAvatarMessage(text, type) {
+    if (!avatarMessageEl) return;
+    avatarMessageEl.textContent = text || "";
+    avatarMessageEl.classList.remove("is-info", "is-success", "is-error");
+    if (type) avatarMessageEl.classList.add("is-" + type);
+  }
+
+  function renderAvatarGrid() {
+    if (!avatarGridEl) return;
+    avatarGridEl.innerHTML = "";
+
+    DEFAULT_AVATARS.forEach(function (av) {
+      var tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "avatar-tile";
+      tile.setAttribute("data-avatar-id", av.id);
+      tile.setAttribute("aria-label", "Use " + av.label + " avatar");
+
+      var emojiSpan = document.createElement("span");
+      emojiSpan.className = "avatar-tile-emoji";
+      emojiSpan.setAttribute("aria-hidden", "true");
+      emojiSpan.textContent = av.emoji;
+
+      var labelSpan = document.createElement("span");
+      labelSpan.className = "avatar-tile-label";
+      labelSpan.textContent = av.label;
+
+      tile.appendChild(emojiSpan);
+      tile.appendChild(labelSpan);
+
+      var isSelected =
+        pictureState.profilePictureType === "default" &&
+        pictureState.profilePicture === av.id;
+      tile.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      if (isSelected) tile.classList.add("is-selected");
+
+      tile.addEventListener("click", function () {
+        handleAvatarPick(av.id);
+      });
+
+      avatarGridEl.appendChild(tile);
+    });
+  }
+
+  function syncPictureToCurrentUser(newState) {
+    var current = getCurrentUser();
+    if (!current) return;
+    current.profilePicture = newState.profilePicture;
+    current.profilePictureType = newState.profilePictureType;
+    setCurrentUser(current);
+  }
+
+  function handleAvatarPick(avatarId) {
+    var current = getCurrentUser();
+    if (!current || !current.username) {
+      setAvatarMessage("Please log in to save a profile picture.", "error");
+      return;
+    }
+
+    var previousState = {
+      profilePicture: pictureState.profilePicture,
+      profilePictureType: pictureState.profilePictureType,
+    };
+
+    // Preview right away (optimistic), then confirm with the server.
+    pictureState = {
+      profilePicture: avatarId,
+      profilePictureType: "default",
+    };
+    renderAvatarGrid();
+    renderHeaderAvatar(loadProfile());
+    setAvatarMessage("Saving\u2026", "info");
+    if (avatarGridEl) avatarGridEl.classList.add("is-saving");
+
+    var url =
+      PROFILE_API_URL +
+      "/" +
+      encodeURIComponent(current.username) +
+      "/picture";
+
+    fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profilePicture: avatarId,
+        profilePictureType: "default",
+      }),
+    })
+      .then(function (resp) {
+        return resp.json().then(
+          function (data) {
+            return { ok: resp.ok, data: data };
+          },
+          function () {
+            return { ok: resp.ok, data: {} };
+          }
+        );
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(
+            (result.data && result.data.error) ||
+              "Could not save profile picture."
+          );
+        }
+
+        var savedUser = result.data && result.data.user;
+        if (savedUser) {
+          pictureState = {
+            profilePicture: savedUser.profilePicture || "",
+            profilePictureType: savedUser.profilePictureType || "default",
+          };
+          syncPictureToCurrentUser(pictureState);
+        }
+
+        renderAvatarGrid();
+        renderHeaderAvatar(loadProfile());
+        setAvatarMessage("Profile picture saved.", "success");
+      })
+      .catch(function (err) {
+        console.error("PUT /api/profile/:username/picture failed:", err);
+        pictureState = previousState;
+        renderAvatarGrid();
+        renderHeaderAvatar(loadProfile());
+        setAvatarMessage(friendlyFetchErrorMessage(err), "error");
+      })
+      .then(function () {
+        if (avatarGridEl) avatarGridEl.classList.remove("is-saving");
+      });
+  }
+
+  // Max raw file size before Base64 (~33% larger). Keeps the JSON body
+  // under the backend express.json "10mb" limit with room to spare.
+  var MAX_PROFILE_UPLOAD_BYTES = 5 * 1024 * 1024;
+
+  var avatarUploadBtn = document.getElementById("avatar-upload-btn");
+  var avatarUploadInput = document.getElementById("avatar-upload-input");
+
+  // Sends Base64 data URL to PUT /api/profile/:username/picture.
+  // Rolls back pictureState to previousState if the request fails.
+  function saveUploadedAvatar(username, base64, previousState, inputEl) {
+    setAvatarMessage("Uploading\u2026", "info");
+    if (avatarGridEl) avatarGridEl.classList.add("is-saving");
+
+    var url =
+      PROFILE_API_URL +
+      "/" +
+      encodeURIComponent(username) +
+      "/picture";
+
+    fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profilePicture: base64,
+        profilePictureType: "uploaded",
+      }),
+    })
+      .then(function (resp) {
+        return resp.json().then(
+          function (data) {
+            return { ok: resp.ok, data: data };
+          },
+          function () {
+            return { ok: resp.ok, data: {} };
+          }
+        );
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          throw new Error(
+            (result.data && result.data.error) ||
+              "Could not save profile picture."
+          );
+        }
+
+        var savedUser = result.data && result.data.user;
+        if (savedUser) {
+          pictureState = {
+            profilePicture: savedUser.profilePicture || "",
+            profilePictureType:
+              savedUser.profilePictureType || "default",
+          };
+          syncPictureToCurrentUser(pictureState);
+        }
+
+        renderAvatarGrid();
+        renderHeaderAvatar(loadProfile());
+        setAvatarMessage("Profile picture uploaded.", "success");
+      })
+      .catch(function (err) {
+        console.error(
+          "PUT /api/profile/:username/picture (upload) failed:",
+          err
+        );
+        pictureState = previousState;
+        renderAvatarGrid();
+        renderHeaderAvatar(loadProfile());
+        setAvatarMessage(friendlyFetchErrorMessage(err), "error");
+      })
+      .then(function () {
+        if (avatarGridEl) avatarGridEl.classList.remove("is-saving");
+        if (inputEl) inputEl.value = "";
+      });
+  }
+
+  function handleAvatarUploadChange(event) {
+    var input = event.target;
+    var file = input.files && input.files[0];
+    if (!file) return;
+
+    if (!file.type || file.type.indexOf("image/") !== 0) {
+      setAvatarMessage(
+        "Please choose an image file (JPG, PNG, GIF, WebP, etc.).",
+        "error"
+      );
+      input.value = "";
+      return;
+    }
+
+    if (file.size > MAX_PROFILE_UPLOAD_BYTES) {
+      setAvatarMessage(
+        "That file is too large. Please pick an image under 5 MB.",
+        "error"
+      );
+      input.value = "";
+      return;
+    }
+
+    var current = getCurrentUser();
+    if (!current || !current.username) {
+      setAvatarMessage(
+        "Please log in to upload a profile picture.",
+        "error"
+      );
+      input.value = "";
+      return;
+    }
+
+    setAvatarMessage("Reading image\u2026", "info");
+
+    var previousState = {
+      profilePicture: pictureState.profilePicture,
+      profilePictureType: pictureState.profilePictureType,
+    };
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      var base64 = reader.result;
+      if (typeof base64 !== "string" || base64 === "") {
+        setAvatarMessage(
+          "Could not read that image. Try a different file.",
+          "error"
+        );
+        input.value = "";
+        return;
+      }
+
+      // Preview immediately (same string we send to the server).
+      pictureState = {
+        profilePicture: base64,
+        profilePictureType: "uploaded",
+      };
+      renderAvatarGrid();
+      renderHeaderAvatar(loadProfile());
+
+      saveUploadedAvatar(current.username, base64, previousState, input);
+    };
+
+    reader.onerror = function () {
+      console.error("FileReader error:", reader.error);
+      setAvatarMessage(
+        "Could not read that image. Try a different file.",
+        "error"
+      );
+      input.value = "";
+    };
+
+    reader.readAsDataURL(file);
+  }
+
+  if (avatarUploadBtn && avatarUploadInput) {
+    avatarUploadBtn.addEventListener("click", function () {
+      avatarUploadInput.click();
+    });
+    avatarUploadInput.addEventListener("change", handleAvatarUploadChange);
+  }
+
+  function fetchProfilePictureFromServer() {
+    var current = getCurrentUser();
+    if (!current || !current.username) return;
+
+    var url =
+      PROFILE_API_URL + "/" + encodeURIComponent(current.username);
+
+    fetch(url)
+      .then(function (resp) {
+        if (!resp.ok) return null;
+        return resp.json();
+      })
+      .then(function (data) {
+        if (!data || !data.user) return;
+        pictureState = {
+          profilePicture: data.user.profilePicture || "",
+          profilePictureType: data.user.profilePictureType || "default",
+        };
+        syncPictureToCurrentUser(pictureState);
+        renderAvatarGrid();
+        renderHeaderAvatar(loadProfile());
+      })
+      .catch(function (err) {
+        console.error("GET /api/profile/:username failed:", err);
+      });
+  }
 
   // Hobby chip selector
   const hobbyGrid = document.getElementById("hobby-grid");
@@ -1570,12 +1972,8 @@ document.addEventListener("DOMContentLoaded", function () {
     setText(displayLocationMeta, profile.location, "Location not set");
     setText(displayBio, profile.bio, "Tell others a little about yourself.");
 
-    // Avatar = first letter of full name (or "U")
-    if (avatarEl) {
-      const initial =
-        (profile.fullName || profile.username || "U").trim().charAt(0) || "U";
-      avatarEl.textContent = initial.toUpperCase();
-    }
+    // Header avatar: uploaded image, default emoji, or first-letter fallback
+    renderHeaderAvatar(profile);
 
     // Render hobby pills
     if (displayHobbies) {
@@ -1726,6 +2124,10 @@ document.addEventListener("DOMContentLoaded", function () {
   renderDisplay(initial);
   // Pre-populate the edit inputs too so opening "Edit" feels instant.
   fillEditInputs(initial);
+
+  // Profile picture grid + load saved avatar from MongoDB
+  renderAvatarGrid();
+  fetchProfilePictureFromServer();
 });
 
 
