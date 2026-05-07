@@ -2889,6 +2889,13 @@ document.addEventListener("DOMContentLoaded", function () {
     socket = io("http://localhost:3000");
     socket.on("connect", function () {
       socket.emit("join", myUsername);
+      console.log("[socket] connected and joined", {
+        socketId: socket.id,
+        username: myUsername,
+      });
+    });
+    socket.on("connect_error", function (err) {
+      console.error("[socket] connect_error", err && err.message ? err.message : err);
     });
   }
 
@@ -4387,6 +4394,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function handleIncomingDirectMessage(message) {
     if (!message) return;
+    console.log("[socket] received newMessage", message);
 
     var myLower = String(myUsername).toLowerCase();
     var sender = String(message.senderUsername || "").toLowerCase();

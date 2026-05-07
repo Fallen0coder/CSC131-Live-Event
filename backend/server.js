@@ -40,10 +40,17 @@ function groupRoom(groupId) {
 }
 
 io.on("connection", (socket) => {
+  console.log("[socket] client connected:", socket.id);
   // Optional handshake join: io(".../?username=alice")
   const handshakeUsername = normalizeUsername(socket.handshake.query.username);
   if (handshakeUsername) {
     socket.join(userRoom(handshakeUsername));
+    console.log(
+      "[socket] handshake joined room:",
+      userRoom(handshakeUsername),
+      "socket:",
+      socket.id
+    );
   }
 
   // Frontend contract requested by user:
@@ -51,6 +58,14 @@ io.on("connection", (socket) => {
     const normalized = normalizeUsername(username);
     if (!normalized) return;
     socket.join(userRoom(normalized));
+    console.log(
+      "[socket] join event:",
+      normalized,
+      "room:",
+      userRoom(normalized),
+      "socket:",
+      socket.id
+    );
   });
 
   // Backward-compatible explicit registration payload.
@@ -58,12 +73,32 @@ io.on("connection", (socket) => {
     const normalized = normalizeUsername(payload && payload.username);
     if (!normalized) return;
     socket.join(userRoom(normalized));
+    console.log(
+      "[socket] register-user event:",
+      normalized,
+      "room:",
+      userRoom(normalized),
+      "socket:",
+      socket.id
+    );
   });
 
   // Optional group room joins for real-time group messages.
   socket.on("join-group", (groupId) => {
     if (!groupId) return;
     socket.join(groupRoom(groupId));
+    console.log(
+      "[socket] join-group event:",
+      groupId,
+      "room:",
+      groupRoom(groupId),
+      "socket:",
+      socket.id
+    );
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log("[socket] client disconnected:", socket.id, "reason:", reason);
   });
 });
 
@@ -1621,6 +1656,12 @@ app.post("/api/messages", async (req, res) => {
       text: newMessage.text,
       createdAt: newMessage.createdAt,
       read: newMessage.read,
+    });
+    console.log("[socket] emitted newMessage", {
+      room: userRoom(receiver),
+      sender: newMessage.senderUsername,
+      receiver: newMessage.receiverUsername,
+      messageId: newMessage.id,
     });
 
     res.status(201).json({
