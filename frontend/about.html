@@ -42,9 +42,15 @@
         <p class="about-section-subtitle">
         </p>
 
+        <!--
+          Each .creator-avatar is a gradient orb. The data-initial="…"
+          attribute is read by the CSS (.creator-avatar::after) to render
+          the person's initials inside the orb without any JS. To swap a
+          creator's initials, just change data-initial here.
+        -->
         <div class="creator-grid">
           <article class="creator-card">
-            <div class="creator-avatar" aria-hidden="true"></div>
+            <div class="creator-avatar" aria-hidden="true" data-initial="SA"></div>
             <h4 class="creator-name">Samay Advani</h4>
             <p class="creator-role">Frontend Developer</p>
             <p class="creator-bio">
@@ -54,7 +60,7 @@
           </article>
 
           <article class="creator-card">
-            <div class="creator-avatar" aria-hidden="true"></div>
+            <div class="creator-avatar" aria-hidden="true" data-initial="C2"></div>
             <h4 class="creator-name">Creator 2</h4>
             <p class="creator-role">Role / Focus (placeholder)</p>
             <p class="creator-bio">
@@ -64,7 +70,7 @@
           </article>
 
           <article class="creator-card">
-            <div class="creator-avatar" aria-hidden="true"></div>
+            <div class="creator-avatar" aria-hidden="true" data-initial="C3"></div>
             <h4 class="creator-name">Creator 3</h4>
             <p class="creator-role">Role / Focus (placeholder)</p>
             <p class="creator-bio">

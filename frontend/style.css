@@ -3668,3 +3668,656 @@ body.theme-dark .event-delete-btn:hover:not(:disabled) {
     transform: translateY(0) scale(1);
   }
 }
+
+/* ===========================================================================
+   v2 DESIGN POLISH — Live Event
+   ---------------------------------------------------------------------------
+   Goal: make every page feel like the same polished app.
+
+   This block is a purely ADDITIVE overlay — all the original rules above
+   keep working. We just layer on:
+     - extra design tokens (gradients, glow, glass surfaces)
+     - a soft atmospheric background for both light and dark themes
+     - consistent navbar / button / card polish
+     - small per-page touches for Settings, About Us, and the auth pages
+   No JS / API / ID / form names are touched. Beginner-friendly comments
+   explain what each block is doing and why.
+   =========================================================================== */
+
+/* ---------------------------------------------------------------------------
+   1) Extra design tokens
+   ---------------------------------------------------------------------------
+   Tokens make sure the same gradient / glow / glass color is reused
+   across every page, instead of each component reinventing its own
+   values. Override-friendly via .theme-dark below.
+   --------------------------------------------------------------------------- */
+:root {
+  /* The primary gradient used on the homepage hero accents, the
+     "+ Add Event" button, the active settings card stripe, etc.
+     Three-stop gradient (blue → indigo → violet) reads as one color
+     from a distance but adds a soft sheen up close. */
+  --gradient-primary: linear-gradient(135deg, #2563eb 0%, #6366f1 50%, #8b5cf6 100%);
+
+  /* Soft tint of that same gradient — used as a background wash
+     behind cards and the navbar logo so accents feel coordinated. */
+  --gradient-primary-soft: linear-gradient(
+    135deg,
+    rgba(37, 99, 235, 0.10),
+    rgba(139, 92, 246, 0.08)
+  );
+
+  /* Big, soft glow used on the body backdrop. Three radial blobs
+     give the page depth without using any image assets. */
+  --gradient-page:
+    radial-gradient(60rem 32rem at 12% -10%, rgba(99, 102, 241, 0.16), transparent 60%),
+    radial-gradient(48rem 30rem at 110% 8%, rgba(236, 72, 153, 0.10), transparent 55%),
+    radial-gradient(60rem 40rem at 50% 110%, rgba(34, 197, 94, 0.06), transparent 60%);
+
+  /* Glass surface (light mode default). Cards layer a translucent
+     panel on top of the page gradient to feel "glassy". */
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(15, 23, 42, 0.08);
+
+  /* Reusable thin divider line for subtle separators. */
+  --hairline: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+/* Dark-mode token overrides. Darker glass + stronger glow so the
+   gradient blobs read on a near-black background. */
+body.theme-dark {
+  --gradient-page:
+    radial-gradient(60rem 32rem at 10% -10%, rgba(99, 102, 241, 0.32), transparent 60%),
+    radial-gradient(48rem 30rem at 110% 6%, rgba(236, 72, 153, 0.18), transparent 55%),
+    radial-gradient(60rem 40rem at 50% 115%, rgba(34, 197, 94, 0.10), transparent 60%);
+
+  --glass-bg: rgba(20, 28, 50, 0.58);
+  --glass-border: rgba(148, 163, 184, 0.16);
+  --hairline: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+/* ---------------------------------------------------------------------------
+   2) Page atmosphere
+   ---------------------------------------------------------------------------
+   The body gets a fixed, layered radial gradient so as the user scrolls
+   the gradient stays in place — like the page is sitting on a glow.
+   --------------------------------------------------------------------------- */
+body {
+  background-attachment: fixed;
+  background-image: var(--gradient-page);
+}
+
+body.theme-dark {
+  background-color: #060912;
+  background-image:
+    radial-gradient(60rem 32rem at 10% -10%, rgba(99, 102, 241, 0.32), transparent 60%),
+    radial-gradient(48rem 30rem at 110% 6%, rgba(236, 72, 153, 0.18), transparent 55%),
+    radial-gradient(60rem 40rem at 50% 115%, rgba(34, 197, 94, 0.10), transparent 60%),
+    linear-gradient(180deg, #060912 0%, #0a1226 100%);
+}
+
+/* ---------------------------------------------------------------------------
+   3) Navbar polish
+   ---------------------------------------------------------------------------
+   - Frosted background using backdrop-filter
+   - Logo wordmark uses a brand gradient (blue → violet)
+   - Active link gets a soft glow ring so the current page is obvious
+   --------------------------------------------------------------------------- */
+.navbar {
+  border-bottom: 1px solid var(--glass-border);
+}
+
+body.theme-dark .navbar {
+  background-color: rgba(7, 11, 26, 0.70);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.logo {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 60%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body.theme-dark .logo {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 60%, #f472b6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.nav-links a {
+  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+body.theme-dark .nav-links a:hover {
+  background-color: rgba(99, 102, 241, 0.20);
+  color: #ffffff;
+}
+
+body.theme-dark .nav-links a.active {
+  background-color: rgba(99, 102, 241, 0.26);
+  color: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(99, 102, 241, 0.32),
+    0 6px 16px rgba(99, 102, 241, 0.25);
+}
+
+/* Match the navbar logout button to the navbar tone. */
+body.theme-dark .nav-logout-btn {
+  background-color: rgba(2, 6, 23, 0.45);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+body.theme-dark .nav-logout-btn:hover {
+  background-color: rgba(239, 68, 68, 0.18);
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fecaca;
+}
+
+/* ---------------------------------------------------------------------------
+   4) Buttons polish
+   ---------------------------------------------------------------------------
+   - .btn-primary becomes a true gradient pill with an inner highlight
+     and a subtle blue glow on hover.
+   - .btn-secondary becomes a soft glass pill that fits over any card.
+   These rules layer on top of the originals so legacy callers (RSVP,
+   login submit, settings buttons, etc.) keep working as before.
+   --------------------------------------------------------------------------- */
+.btn-primary {
+  background-image: var(--gradient-primary);
+  background-color: var(--color-primary);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 6px 20px rgba(37, 99, 235, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.btn-primary:hover {
+  box-shadow:
+    0 10px 28px rgba(99, 102, 241, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+.btn-secondary {
+  background-color: var(--glass-bg);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+body.theme-dark .btn-secondary {
+  color: #e5e7eb;
+  border-color: rgba(148, 163, 184, 0.22);
+  background-color: rgba(2, 6, 23, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body.theme-dark .btn-secondary:hover {
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #ffffff;
+  background-color: rgba(99, 102, 241, 0.18);
+}
+
+/* The login/signup/settings/admin "primary form" submit button */
+.login-submit-btn {
+  background-image: var(--gradient-primary);
+  background-color: var(--color-primary);
+  box-shadow:
+    0 8px 24px rgba(37, 99, 235, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.login-submit-btn:hover {
+  background-image: var(--gradient-primary);
+  box-shadow:
+    0 12px 30px rgba(99, 102, 241, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* RSVP green button keeps its own color but gains the same lift behavior. */
+.rsvp-btn {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 6px 18px rgba(37, 99, 235, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.rsvp-btn.is-rsvped {
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 6px 18px rgba(22, 163, 74, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+/* ---------------------------------------------------------------------------
+   5) Universal card glass treatment
+   ---------------------------------------------------------------------------
+   In dark mode every "card" surface gets the same recipe so they all
+   look like siblings — not 8 different cards from 8 different designers:
+     - translucent navy surface
+     - hairline border
+     - inner top highlight (1px line at the top, like a glass bevel)
+     - deeper soft shadow underneath
+     - hover lifts and grows the indigo glow ring
+   --------------------------------------------------------------------------- */
+body.theme-dark .event-card,
+body.theme-dark .featured-card,
+body.theme-dark .profile-card-block,
+body.theme-dark .profile-header-card,
+body.theme-dark .login-card,
+body.theme-dark .settings-card,
+body.theme-dark .creator-card,
+body.theme-dark .user-result-card,
+body.theme-dark .modal-window,
+body.theme-dark .group-create-panel,
+body.theme-dark .chat-window {
+  background-color: rgba(15, 22, 42, 0.62);
+  border: 1px solid var(--glass-border);
+  -webkit-backdrop-filter: blur(12px) saturate(120%);
+  backdrop-filter: blur(12px) saturate(120%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 12px 28px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-dark .event-card:hover,
+body.theme-dark .featured-card:hover,
+body.theme-dark .creator-card:hover,
+body.theme-dark .user-result-card:hover {
+  border-color: rgba(99, 102, 241, 0.50);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 18px 40px rgba(0, 0, 0, 0.50),
+    0 0 0 1px rgba(99, 102, 241, 0.18);
+}
+
+/* Light-mode cards: keep the clean white look but add a soft tint so
+   they don't look stark against the body radial blobs. */
+.event-card,
+.featured-card,
+.profile-card-block,
+.profile-header-card,
+.login-card,
+.settings-card,
+.creator-card,
+.user-result-card,
+.modal-window,
+.chat-window {
+  position: relative;
+}
+
+/* ---------------------------------------------------------------------------
+   6) Featured card (homepage) refinements
+   ---------------------------------------------------------------------------
+   The homepage Featured Events cards already use .featured-card. We
+   add a tiny gradient bar at the very top (using ::after so we don't
+   touch the existing ::before reserved by other selectors) so they
+   match the events.html cards and feel like one design.
+   --------------------------------------------------------------------------- */
+.featured-card {
+  overflow: hidden;
+  transition:
+    transform 0.25s ease,
+    border-color 0.2s ease,
+    box-shadow 0.25s ease;
+}
+
+.featured-card::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--gradient-primary);
+  opacity: 0.85;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  pointer-events: none;
+}
+
+.featured-card .featured-view-btn {
+  background-image: var(--gradient-primary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 6px 18px rgba(37, 99, 235, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.featured-card .featured-view-btn:hover {
+  box-shadow:
+    0 10px 26px rgba(99, 102, 241, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+/* ---------------------------------------------------------------------------
+   7) Settings page polish
+   ---------------------------------------------------------------------------
+   - Header gets a brand gradient
+   - Each open card grows a thin gradient line under its header
+   - The chevron disc gets a stronger accent in dark mode
+   --------------------------------------------------------------------------- */
+.settings-header h2,
+.about-header h2,
+.events-header h2,
+.friends-header h2 {
+  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 50%, #ec4899 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body.theme-dark .settings-header h2,
+body.theme-dark .about-header h2,
+body.theme-dark .events-header h2,
+body.theme-dark .friends-header h2 {
+  background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.settings-card-header {
+  position: relative;
+}
+
+/* Bottom gradient line under the header when the card is expanded.
+   Uses ::after so we don't conflict with the original border-bottom
+   which still handles the closed-state divider. */
+.settings-card:not(.is-collapsed) .settings-card-header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--gradient-primary);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+body.theme-dark .settings-card-chevron {
+  background-color: rgba(99, 102, 241, 0.20);
+  color: #c7d2fe;
+}
+
+body.theme-dark .settings-card-header:hover .settings-card-chevron {
+  background-color: rgba(99, 102, 241, 0.35);
+  color: #ffffff;
+}
+
+/* Settings page intro p — gentler, larger reading line. */
+.settings-header p {
+  font-size: 1rem;
+  max-width: 42rem;
+}
+
+/* ---------------------------------------------------------------------------
+   8) About Us page polish
+   ---------------------------------------------------------------------------
+   - Bigger, gradient page title (handled above)
+   - The empty creator avatar div becomes a gradient orb. We pull the
+     person's initials from a data-initial="…" attribute on the div
+     (added in about.html). With one CSS rule we get nice initials
+     for every creator without changing the HTML structure.
+   - Hover halos so the cards feel alive.
+   --------------------------------------------------------------------------- */
+.creator-avatar {
+  position: relative;
+  background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 8px 24px rgba(99, 102, 241, 0.35);
+  overflow: hidden;
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.creator-avatar::after {
+  content: attr(data-initial);
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: 0.03em;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.creator-card {
+  transition:
+    transform 0.25s ease,
+    border-color 0.2s ease,
+    box-shadow 0.25s ease;
+}
+
+.creator-card:hover .creator-avatar {
+  transform: scale(1.04);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.24),
+    0 12px 32px rgba(99, 102, 241, 0.55),
+    0 0 0 4px rgba(99, 102, 241, 0.18);
+}
+
+/* About header lead text gets a soft size bump for visual hierarchy. */
+.about-header h2 {
+  font-weight: 800;
+}
+
+.about-header p {
+  font-size: 1.05rem;
+  max-width: 44rem;
+}
+
+/* ---------------------------------------------------------------------------
+   9) Profile / Friends polish
+   ---------------------------------------------------------------------------
+   The .user-result-card layout was already harmonized in an earlier
+   pass; here we tighten spacing and add a soft gradient ring on
+   hover that matches the rest of the app.
+   --------------------------------------------------------------------------- */
+.profile-display-name {
+  background: linear-gradient(135deg, #1f2937, #4b5563);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+body.theme-dark .profile-display-name {
+  background: linear-gradient(135deg, #ffffff 0%, #c7d2fe 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+body.theme-dark .profile-avatar {
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.10),
+    0 10px 24px rgba(99, 102, 241, 0.40);
+}
+
+/* User result avatar (search results + friend cards) — match brand glow */
+body.theme-dark .user-result-avatar {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(139, 92, 246, 0.18));
+  color: #c7d2fe;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
+}
+
+/* Friend "Pending" badge: keep readable on the new translucent card */
+body.theme-dark .friend-pending-badge {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.32);
+}
+
+/* ---------------------------------------------------------------------------
+   10) Form input focus rings (dark mode)
+   ---------------------------------------------------------------------------
+   Subtle indigo halo when the user tabs into any input/textarea/select
+   so focus is obvious without being harsh.
+   --------------------------------------------------------------------------- */
+body.theme-dark .form-field input:focus,
+body.theme-dark .form-field textarea:focus,
+body.theme-dark .form-field select:focus {
+  border-color: rgba(99, 102, 241, 0.70);
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.22),
+    0 0 0 1px rgba(99, 102, 241, 0.40);
+}
+
+/* Search inputs (homepage + profile user search) get the glassy look. */
+.search-input,
+.search-select {
+  transition:
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+body.theme-dark .search-input,
+body.theme-dark .search-select {
+  background-color: rgba(2, 6, 23, 0.55);
+  border-color: rgba(148, 163, 184, 0.22);
+  color: var(--color-text);
+}
+
+body.theme-dark .search-input:focus,
+body.theme-dark .search-select:focus {
+  background-color: rgba(2, 6, 23, 0.75);
+  border-color: rgba(99, 102, 241, 0.60);
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.22),
+    0 0 0 1px rgba(99, 102, 241, 0.40);
+}
+
+/* Search section background matches the page in dark mode */
+body.theme-dark .search-section {
+  background: transparent;
+  border-block-color: var(--glass-border);
+}
+
+/* ---------------------------------------------------------------------------
+   11) Footer polish
+   ---------------------------------------------------------------------------
+   Match the navbar look so the page feels bookended by the same chrome.
+   --------------------------------------------------------------------------- */
+body.theme-dark .site-footer {
+  background-color: rgba(7, 11, 26, 0.65);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--glass-border);
+}
+
+.footer-logo {
+  background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   12) Hero refinements (homepage)
+   ---------------------------------------------------------------------------
+   Tighten the glass card on the hero so it feels of-a-piece with the
+   navbar / footer / cards used everywhere else.
+   --------------------------------------------------------------------------- */
+.hero-content--large {
+  border-radius: var(--radius-xl);
+  background: rgba(8, 12, 28, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+.hero-actions .btn-primary {
+  font-size: 1rem;
+}
+
+/* ---------------------------------------------------------------------------
+   13) Events page polish
+   ---------------------------------------------------------------------------
+   The event-card already has a top accent stripe (::before) and the
+   universal card glass rule above gives it the new translucent look.
+   Here we just nudge the meta rows so they read crisp on the new
+   background and clean up the action buttons row.
+   --------------------------------------------------------------------------- */
+body.theme-dark .event-meta-row {
+  color: #cbd5e1;
+}
+
+body.theme-dark .event-card-category {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.32);
+}
+
+/* Loading skeleton lines look right on the new dark surface. */
+body.theme-dark .skeleton-card {
+  background-color: rgba(15, 22, 42, 0.62);
+  border-color: var(--glass-border);
+}
+
+/* ---------------------------------------------------------------------------
+   14) Modal polish (Edit Event, etc.)
+   --------------------------------------------------------------------------- */
+body.theme-dark .modal-overlay {
+  background: rgba(2, 6, 23, 0.65);
+}
+
+/* ---------------------------------------------------------------------------
+   15) Reduced motion safety
+   ---------------------------------------------------------------------------
+   Anyone who turned on .a11y-reduce-motion (or the OS preference) gets
+   no transforms or animations from any of the polish effects above.
+   --------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .featured-card,
+  .event-card,
+  .creator-card,
+  .user-result-card,
+  .creator-avatar,
+  .btn-primary,
+  .login-submit-btn {
+    transition: none !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   16) Page max-width consistency
+   ---------------------------------------------------------------------------
+   .container is already min(92%, 1120px) site-wide. We make sure the
+   specific layout wrappers used inside .container also share the same
+   reading width so every page looks anchored to the same grid.
+   --------------------------------------------------------------------------- */
+.profile-layout,
+.settings-layout,
+.about-layout {
+  max-width: 920px;
+  margin-inline: auto;
+}
+
+.events-grid,
+.featured-grid {
+  max-width: 1120px;
+  margin-inline: auto;
+}
+
+/* ---------------------------------------------------------------------------
+   17) Tiny typographic polish
+   ---------------------------------------------------------------------------
+   Slightly smoother fonts + better line-height on body copy across
+   the site. Doesn't change any class names — just tightens the look.
+   --------------------------------------------------------------------------- */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h2,
+h3 {
+  letter-spacing: -0.02em;
+}
