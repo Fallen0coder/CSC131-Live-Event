@@ -14,6 +14,12 @@ const mongoose = require("mongoose");
 // - `displayName`, `profilePicture`, and `bio` are public profile fields
 //   used by the username search route. They're optional with empty
 //   defaults so existing signup code keeps working.
+// - `profilePicture` can hold one of two things:
+//     * the name/id of a built-in default avatar (e.g. "heart"), OR
+//     * a Base64-encoded image string for an uploaded picture
+//       (typically a data URL like "data:image/png;base64,iVBORw0K...").
+//   `profilePictureType` tells the frontend which kind it is, so the
+//   frontend knows whether to render a built-in avatar or the raw Base64.
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true },
 
@@ -41,7 +47,25 @@ const userSchema = new mongoose.Schema({
 
   // Public profile fields (safe to return from the search route).
   displayName: { type: String, default: "", trim: true },
+
+  // The actual picture value: either a default avatar id/name or a
+  // Base64 image string (see profilePictureType below).
   profilePicture: { type: String, default: "" },
+
+  // Tells the frontend how to interpret `profilePicture`:
+  //   - "default"  : `profilePicture` is the id/name of a built-in
+  //                  avatar (or empty string when the user has not
+  //                  picked one yet).
+  //   - "uploaded" : `profilePicture` is a Base64 image string the
+  //                  user uploaded from their device.
+  // Restricted to those two values via `enum` so we never accidentally
+  // store a typo. Defaults to "default" for newly created accounts.
+  profilePictureType: {
+    type: String,
+    enum: ["default", "uploaded"],
+    default: "default",
+  },
+
   bio: { type: String, default: "", trim: true },
 
   // Accepted friends. We store the *lowercased* username of each friend

@@ -68,7 +68,12 @@ io.on("connection", (socket) => {
 });
 
 app.use(cors());
-app.use(express.json());
+// We allow a generous JSON body size because the profile picture route
+// (PUT /api/profile/:username/picture) accepts Base64 image strings,
+// which are roughly 33% larger than the original file. Express's default
+// limit of 100kb is too small for typical avatar uploads, so we bump it
+// to 10mb to comfortably fit a few-MB image.
+app.use(express.json({ limit: "10mb" }));
 
 // ---------------------------------------------------------------------------
 // MongoDB connection
@@ -507,6 +512,110 @@ app.get("/api/users/search", async (req, res) => {
   } catch (err) {
     console.error("GET /api/users/search failed:", err);
     res.status(500).json({ error: "User search failed." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Profile routes
+// ---------------------------------------------------------------------------
+// These routes let the frontend fetch and update a user's public profile
+// data — most importantly their profile picture, which is stored
+// permanently in MongoDB so it survives logouts and device switches.
+//
+// Username matching is case-insensitive: the URL parameter is lowercased
+// and compared against the indexed `usernameLower` field on the User
+// document.
+//
+// IMPORTANT: every response on this section uses `safeUser(...)` so the
+// password (and password hash) is NEVER sent back to the client.
+
+// GET /api/profile/:username
+// Returns the safe user object (no password) for the given username.
+// Useful for the Profile page to load the latest profile picture and
+// other public-ish info from the database instead of stale localStorage.
+app.get("/api/profile/:username", async (req, res) => {
+  try {
+    // Normalize the URL parameter: trim + lowercase so "Alice" and
+    // "alice" both resolve to the same account.
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const user = await findUserByUsername(lower);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // safeUser() strips the password and includes the profile picture
+    // fields the frontend needs.
+    res.json({ user: safeUser(user) });
+  } catch (err) {
+    console.error("GET /api/profile/:username failed:", err);
+    res.status(500).json({ error: "Could not load profile." });
+  }
+});
+
+// PUT /api/profile/:username/picture
+// Body: { profilePicture: string, profilePictureType: "default" | "uploaded" }
+//
+// Saves the picture to MongoDB so it persists across sessions:
+//   - If `profilePictureType` is "default", `profilePicture` should be
+//     the id/name of a built-in avatar (e.g. "heart").
+//   - If `profilePictureType` is "uploaded", `profilePicture` should be
+//     a Base64 image string the user picked from their device (typically
+//     a data URL like "data:image/png;base64,...").
+//
+// On success, returns the updated safe user object (no password).
+app.put("/api/profile/:username/picture", async (req, res) => {
+  try {
+    // 1. Find the user. Same case-insensitive lookup as GET above.
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const user = await findUserByUsername(lower);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    // 2. Validate the request body.
+    const { profilePicture, profilePictureType } = req.body || {};
+
+    // `profilePictureType` must be exactly one of the two allowed values.
+    if (
+      profilePictureType !== "default" &&
+      profilePictureType !== "uploaded"
+    ) {
+      return res.status(400).json({
+        error: 'profilePictureType must be "default" or "uploaded".',
+      });
+    }
+
+    // `profilePicture` must be a non-empty string. We don't try to
+    // strictly validate the Base64 format here to keep things
+    // beginner-friendly — the frontend is responsible for producing a
+    // valid value (e.g. via FileReader.readAsDataURL).
+    if (typeof profilePicture !== "string" || profilePicture.trim() === "") {
+      return res.status(400).json({
+        error: "profilePicture must be a non-empty string.",
+      });
+    }
+
+    // 3. Save to MongoDB.
+    user.profilePicture = profilePicture;
+    user.profilePictureType = profilePictureType;
+    await user.save();
+
+    // 4. Respond with the updated safe user (password is never included).
+    res.json({
+      message: "Profile picture updated.",
+      user: safeUser(user),
+    });
+  } catch (err) {
+    console.error("PUT /api/profile/:username/picture failed:", err);
+    res.status(500).json({ error: "Could not update profile picture." });
   }
 });
 
@@ -1131,6 +1240,14 @@ function safeUser(user) {
     username: user.username,
     email: user.email,
     role: user.role || "user",
+    // Profile picture fields. We always send both so the frontend can
+    // render the avatar correctly without an extra request:
+    //   - profilePicture: either a default avatar id/name, or a Base64
+    //     image string when the user uploaded their own picture.
+    //   - profilePictureType: "default" or "uploaded" — tells the
+    //     frontend which kind of value `profilePicture` is.
+    profilePicture: user.profilePicture || "",
+    profilePictureType: user.profilePictureType || "default",
   };
 }
 
