@@ -2677,16 +2677,26 @@ body.is-editing-profile .profile-display-only {
 /* Each card is a horizontal row:
      [Avatar] · [Name + @handle stacked] · [Action button]
    align-items: center vertically aligns those three blocks so the
-   button lines up with the middle of the text stack. */
+   button lines up with the middle of the text stack.
+
+   flex-wrap: wrap is important: when the card lives inside a narrow
+   grid cell (e.g. the My Friends grid on the Friends page), the action
+   buttons drop onto a new row INSIDE the card instead of overflowing
+   past its right edge. min-width: 0 lets the card itself shrink to
+   the width of its grid cell. min-height keeps every card the same
+   visual size so a row of cards lines up cleanly. */
 .user-result-card {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
   align-items: center;
   padding: 0.95rem 1.1rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+  min-height: 5.5rem;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -2725,9 +2735,15 @@ body.is-editing-profile .profile-display-only {
    IMPORTANT: min-width: 0 lets this flex child shrink below its
    intrinsic content width — without it, the text-overflow: ellipsis
    on .user-result-name / .user-result-handle below would never
-   trigger because the column would just push the card wider. */
+   trigger because the column would just push the card wider.
+
+   flex-basis 8rem gives the text column a sensible minimum size so
+   the name/username can't be squashed down to zero width. When even
+   that minimum can't fit next to the avatar + buttons, the buttons
+   wrap onto a new row (because .user-result-card is flex-wrap: wrap)
+   instead of crushing the text. */
 .user-result-info {
-  flex: 1 1 auto;
+  flex: 1 1 8rem;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -2775,10 +2791,20 @@ body.is-editing-profile .profile-display-only {
 
 /* Action button column on the right. flex: 0 0 auto keeps the button
    at its natural width so the middle text column gets all leftover
-   space. */
+   space.
+
+   margin-left: auto pushes the actions to the right edge of the card,
+   whether they sit on the same row as the text (eats up leftover
+   space on the left) or wrap to their own row below (still aligned
+   right). flex-wrap: wrap lets multiple buttons (e.g. Message +
+   Remove Friend) stack onto two short rows on very narrow cards. */
 .user-result-actions {
   flex: 0 0 auto;
   align-self: center;
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
 }
 
 .user-add-friend-btn {
@@ -2863,10 +2889,19 @@ body.is-editing-profile .profile-display-only {
   color: #b91c1c;
 }
 
+/* Responsive grid for friend / request / conversation cards.
+   - auto-fill + minmax(300px, 1fr) gives 1 card per row on phones,
+     2 on tablets, and 3+ on wider desktops, all the same width.
+   - align-items: stretch makes every card in a row match the tallest
+     card's height, so the row looks like a tidy strip of equal cards.
+   - 300px is wide enough for [avatar] + [name/@handle] + [2 buttons]
+     to fit on one line; below that the buttons gracefully wrap inside
+     the card thanks to flex-wrap on .user-result-card. */
 .friend-card-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 0.85rem;
+  align-items: stretch;
 }
 
 .friend-loading,
