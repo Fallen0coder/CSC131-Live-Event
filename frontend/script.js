@@ -227,48 +227,193 @@ if (createAccountBtn) {
   });
 }
 
+// ===========================================================================
+// HOMEPAGE: Featured Events
+//
+// We pull the live list of events from the backend and show the first 3 as
+// "Featured Events" cards on the homepage. Previously this section used a
+// hardcoded array of demo events — those have been removed so the homepage
+// always reflects what's actually in the database.
+//
+// API:  GET http://localhost:3000/api/events  -> JSON array of events
+// Each event object on the backend has:
+//   { id, title, category, date, time, location, description, ... }
+//
+// User-visible states handled below:
+//   - "Loading featured events…" while the request is in flight
+//   - 3 cards once the events arrive
+//   - "No featured events available." when the backend returns an empty list
+//   - "Could not load featured events." if the request fails
+//   - "No events match your search." when the homepage filter hides every card
+// ===========================================================================
+const FEATURED_EVENTS_API_URL = "http://localhost:3000/api/events";
+
 const featuredEventsContainer = document.getElementById("featured-events");
+const featuredEmptyMessage = document.getElementById("featured-empty");
 const homeSearchInput = document.getElementById("home-search");
 const homeFilterSelect = document.getElementById("home-filter");
-const featuredEmptyMessage = document.getElementById("featured-empty");
 
-const featuredHomeEvents = [
-  {
-    title: "Night Market & Live DJs",
-    date: "Sat, May 3 · 8:00 PM",
-    location: "Student Union Plaza",
-    description:
-      "Food trucks, student DJs, and lawn games under the string lights.",
-    category: "social"
-  },
-  {
-    title: "48-Hour Build Sprint",
-    date: "Fri, May 9 · 9:00 AM",
-    location: "Innovation Studio",
-    description:
-      "Team up, sketch an idea, and ship a demo with mentors on-site.",
-    category: "tech"
-  },
-  {
-    title: "Career Coffee Chats",
-    date: "Wed, May 14 · 2:00 PM",
-    location: "Library Atrium",
-    description:
-      "Speed-style chats with alumni from design, finance, and tech paths.",
-    category: "career"
-  }
-];
-
+// Friendly text for the category badge (e.g. "social" -> "Social"). If
+// the category isn't one we know about, we just title-case it so the
+// badge still reads nicely.
 function featuredCategoryLabel(category) {
+  if (!category) return "";
   const labels = {
     social: "Social",
     tech: "Tech",
     career: "Career",
-    outdoor: "Outdoor"
+    outdoor: "Outdoor",
+    music: "Music",
+    sports: "Sports"
   };
-  return labels[category] || category;
+  const key = String(category).toLowerCase();
+  if (labels[key]) return labels[key];
+  return key.charAt(0).toUpperCase() + key.slice(1);
 }
 
+// Format a date string (e.g. "2026-05-14") into "May 14, 2026". If the
+// browser can't parse it, we just show the raw value so we never lose
+// information.
+function featuredFormatDate(dateString) {
+  if (!dateString) return "";
+  const parsed = new Date(dateString);
+  if (isNaN(parsed.getTime())) return String(dateString);
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric"
+  });
+}
+
+// Format a "HH:MM" time (e.g. "14:00") into a 12-hour string ("2:00 PM").
+function featuredFormatTime(timeString) {
+  if (!timeString) return "";
+  const match = /^(\d{1,2}):(\d{2})/.exec(String(timeString));
+  if (match) {
+    const d = new Date();
+    d.setHours(Number(match[1]), Number(match[2]), 0, 0);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit"
+      });
+    }
+  }
+  return String(timeString);
+}
+
+// Escape any user-supplied text we're going to drop into innerHTML so a
+// malicious title/description can't smuggle in <script> tags.
+function featuredEscape(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Trim a long description down to a teaser length so cards stay tidy.
+function featuredTrim(text, max) {
+  if (!text) return "";
+  const s = String(text);
+  if (s.length <= max) return s;
+  return s.substring(0, max - 1).replace(/\s+$/, "") + "\u2026";
+}
+
+// Show a single status message inside the featured section. Passing an
+// empty string hides the message element.
+function setFeaturedStatus(message) {
+  if (!featuredEmptyMessage) return;
+  featuredEmptyMessage.textContent = message || "";
+  featuredEmptyMessage.classList.toggle("is-hidden", !message);
+}
+
+// Build a single Featured Event card matching the existing homepage
+// design (badge, title, date/time/location meta rows, description, and
+// a "View Details" button that takes the user to events.html).
+function buildFeaturedCard(event) {
+  const card = document.createElement("article");
+  card.className = "featured-card";
+  card.setAttribute("data-featured-card", "true");
+  card.setAttribute(
+    "data-category",
+    String(event.category || "").toLowerCase()
+  );
+
+  const categoryText = featuredEscape(featuredCategoryLabel(event.category));
+  const titleText = featuredEscape(event.title || "Untitled event");
+  const dateText = featuredEscape(featuredFormatDate(event.date));
+  const timeText = featuredEscape(featuredFormatTime(event.time));
+  const locationText = featuredEscape(event.location || "");
+  const descriptionText = featuredEscape(
+    featuredTrim(event.description || "", 140)
+  );
+
+  let html = "";
+  if (categoryText) {
+    html += "<span class='featured-badge'>" + categoryText + "</span>";
+  }
+  html += "<h3>" + titleText + "</h3>";
+  if (dateText) {
+    html +=
+      "<p class='event-meta'><strong>Date:</strong> " + dateText + "</p>";
+  }
+  if (timeText) {
+    html +=
+      "<p class='event-meta'><strong>Time:</strong> " + timeText + "</p>";
+  }
+  if (locationText) {
+    html +=
+      "<p class='event-meta'><strong>Location:</strong> " +
+      locationText +
+      "</p>";
+  }
+  if (descriptionText) {
+    html +=
+      "<p class='event-description'>" + descriptionText + "</p>";
+  }
+  html +=
+    "<button type='button' class='featured-view-btn'>View Details</button>";
+  card.innerHTML = html;
+
+  // The "View Details" button takes the user to the full Events page so
+  // they can RSVP / read the long description / etc. We deliberately
+  // don't pass an event id in the URL — the Events page just shows the
+  // full list, which is the simplest way to keep both pages in sync.
+  const viewBtn = card.querySelector(".featured-view-btn");
+  if (viewBtn) {
+    viewBtn.addEventListener("click", function () {
+      window.location.href = "events.html";
+    });
+  }
+
+  return card;
+}
+
+// Render up to 3 featured cards from a real backend events array.
+function renderFeaturedEvents(events) {
+  if (!featuredEventsContainer) return;
+  featuredEventsContainer.innerHTML = "";
+
+  if (!Array.isArray(events) || events.length === 0) {
+    setFeaturedStatus("No featured events available.");
+    return;
+  }
+
+  events.forEach(function (event) {
+    featuredEventsContainer.appendChild(buildFeaturedCard(event));
+  });
+  setFeaturedStatus("");
+  // Re-run the homepage search/filter once the cards exist so any text
+  // already typed in the search box is respected immediately.
+  applyFeaturedFilters();
+}
+
+// Honor the homepage search box + category dropdown. Hides any cards
+// that don't match and shows a "no results" message when nothing is
+// visible. Safe to call when the cards haven't been rendered yet.
 function applyFeaturedFilters() {
   if (
     !featuredEventsContainer ||
@@ -279,16 +424,20 @@ function applyFeaturedFilters() {
     return;
   }
 
+  const cards = featuredEventsContainer.querySelectorAll(
+    "[data-featured-card]"
+  );
+  if (cards.length === 0) return;
+
   const query = homeSearchInput.value.trim().toLowerCase();
   const category = homeFilterSelect.value;
-  const cards = featuredEventsContainer.querySelectorAll("[data-featured-card]");
   let visibleCount = 0;
 
   cards.forEach(function (card) {
     const cardCategory = card.getAttribute("data-category") || "";
     const matchesCategory = category === "all" || cardCategory === category;
     const blob = (card.textContent || "").toLowerCase();
-    const matchesSearch = query === "" || blob.includes(query);
+    const matchesSearch = query === "" || blob.indexOf(query) !== -1;
 
     if (matchesCategory && matchesSearch) {
       card.classList.remove("is-hidden");
@@ -298,54 +447,48 @@ function applyFeaturedFilters() {
     }
   });
 
-  featuredEmptyMessage.classList.toggle("is-hidden", visibleCount > 0);
+  if (visibleCount === 0) {
+    setFeaturedStatus("No events match your search.");
+  } else {
+    setFeaturedStatus("");
+  }
 }
 
+// Fetch the list of events from the backend, take the first 3, and
+// render them as featured cards. Network/parse errors fall through to
+// a friendly "Could not load…" message instead of leaving a blank grid.
+function loadFeaturedEvents() {
+  if (!featuredEventsContainer) return;
+
+  setFeaturedStatus("Loading featured events\u2026");
+  featuredEventsContainer.innerHTML = "";
+
+  fetch(FEATURED_EVENTS_API_URL)
+    .then(function (response) {
+      if (!response.ok) {
+        throw new Error("Request failed with status " + response.status);
+      }
+      return response.json();
+    })
+    .then(function (events) {
+      const list = Array.isArray(events) ? events.slice(0, 3) : [];
+      renderFeaturedEvents(list);
+    })
+    .catch(function (error) {
+      console.error("Failed to load featured events:", error);
+      featuredEventsContainer.innerHTML = "";
+      setFeaturedStatus("Could not load featured events.");
+    });
+}
+
+// Only run this on pages that actually have the featured-events grid
+// (i.e. index.html). Other pages will just skip the whole block.
 if (featuredEventsContainer) {
-  featuredHomeEvents.forEach(function (event) {
-    const card = document.createElement("article");
-    card.className = "featured-card";
-    card.setAttribute("data-featured-card", "true");
-    card.setAttribute("data-category", event.category);
-
-    card.innerHTML =
-      "<span class='featured-badge'>" +
-      featuredCategoryLabel(event.category) +
-      "</span>" +
-      "<h3>" +
-      event.title +
-      "</h3>" +
-      "<p class='event-meta'><strong>Date:</strong> " +
-      event.date +
-      "</p>" +
-      "<p class='event-meta'><strong>Location:</strong> " +
-      event.location +
-      "</p>" +
-      "<p class='event-description'>" +
-      event.description +
-      "</p>" +
-      "<button type='button' class='featured-view-btn'>View Details</button>";
-
-    const detailsButton = card.querySelector(".featured-view-btn");
-    if (detailsButton) {
-      detailsButton.addEventListener("click", function () {
-        alert(
-          'Demo: details for "' +
-            event.title +
-            '" would open here (no backend yet).'
-        );
-      });
-    }
-
-    featuredEventsContainer.appendChild(card);
-  });
-
   if (homeSearchInput && homeFilterSelect) {
     homeSearchInput.addEventListener("input", applyFeaturedFilters);
     homeFilterSelect.addEventListener("change", applyFeaturedFilters);
   }
-
-  applyFeaturedFilters();
+  loadFeaturedEvents();
 }
 
 

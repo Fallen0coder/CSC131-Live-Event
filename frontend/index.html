@@ -78,6 +78,15 @@
       </div>
     </section>
 
+    <!--
+      Featured Events:
+      The empty <div id="featured-events"> is filled in by script.js.
+      It fetches GET http://localhost:3000/api/events and renders the
+      first 3 events as cards. The <p id="featured-empty"> below is a
+      single status line that script.js shows when the list is empty,
+      while loading, when nothing matches the search, or when the
+      backend can't be reached.
+    -->
     <section class="section featured-section" aria-labelledby="featured-heading">
       <div class="container">
         <h2 id="featured-heading" class="section-title">Featured Events</h2>
@@ -85,9 +94,7 @@
           Three hand-picked highlights you can explore right now.
         </p>
         <div id="featured-events" class="featured-grid"></div>
-        <p id="featured-empty" class="featured-empty is-hidden" role="status">
-          No events match your search. Try another keyword or category.
-        </p>
+        <p id="featured-empty" class="featured-empty is-hidden" role="status" aria-live="polite"></p>
       </div>
     </section>
   </main>
