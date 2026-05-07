@@ -37,7 +37,8 @@
       <form id="add-event-form" class="login-card" novalidate>
         <h2>Add a new event</h2>
         <p class="login-subtitle">
-          Share something happening on campus. All fields below are required.
+          Share something happening on campus. Every field marked required must
+          be filled in. The event image is optional.
         </p>
 
         <div class="form-field">
@@ -99,6 +100,32 @@
             rows="4"
             placeholder="Tell people what to expect."
           ></textarea>
+        </div>
+
+        <!--
+          Optional cover image: only image/* files. script.js turns the file
+          into a Base64 data URL and sends it with POST /api/events so it is
+          stored in MongoDB (not in localStorage).
+        -->
+        <div class="form-field">
+          <label for="event-image">Event image (optional)</label>
+          <input
+            type="file"
+            id="event-image"
+            name="eventImage"
+            accept="image/*"
+          />
+          <div
+            id="event-image-preview-wrap"
+            class="event-form-image-frame is-hidden"
+            aria-live="polite"
+          >
+            <img
+              id="event-image-preview"
+              class="event-form-image-preview"
+              alt="Preview of the image you selected for this event"
+            />
+          </div>
         </div>
 
         <button type="submit" id="add-event-submit-btn" class="login-submit-btn">

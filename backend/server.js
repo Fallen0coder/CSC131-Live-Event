@@ -159,14 +159,41 @@ async function seedEvents() {
 // Routes
 // ---------------------------------------------------------------------------
 
+// Shape a Mongo event document (lean or hydrated) into the JSON the
+// frontend always expects — including explicit eventImage/eventImageType
+// strings — so refreshes never "lose" image fields due to serialization quirks.
+function shapePublicEvent(raw) {
+  const e =
+    raw && typeof raw.toObject === "function"
+      ? raw.toObject()
+      : raw || {};
+  const id =
+    e._id && e._id.toString ? e._id.toString() : e.id ? String(e.id) : "";
+  return {
+    id,
+    title: e.title ?? "",
+    date: e.date ?? "",
+    time: e.time ?? "",
+    location: e.location ?? "",
+    category: e.category ?? "",
+    description: e.description ?? "",
+    creatorUsername: e.creatorUsername ?? "",
+    createdAt: e.createdAt ?? null,
+    eventImage:
+      typeof e.eventImage === "string" ? e.eventImage : "",
+    eventImageType:
+      typeof e.eventImageType === "string" ? e.eventImageType : "",
+  };
+}
+
 // GET /api/events
 // Returns every event in the database, newest first.
 // "Newest" means the most recently *created* event (createdAt desc), so a
 // brand-new event a user just submitted shows up at the top of the list.
 app.get("/api/events", async (req, res) => {
   try {
-    const events = await Event.find().sort({ createdAt: -1 });
-    res.json(events);
+    const rows = await Event.find().sort({ createdAt: -1 }).lean();
+    res.json(rows.map(shapePublicEvent));
   } catch (err) {
     console.error("GET /api/events failed:", err);
     res.status(500).json({ error: "Failed to fetch events." });
@@ -186,6 +213,9 @@ app.get("/api/events", async (req, res) => {
 //     description:     string  (required)
 //     category:        string  (optional, e.g. "tech", "music")
 //     creatorUsername: string  (optional, who created the event)
+//     eventImage:      string  (optional, Base64 data URL from the browser)
+//     eventImageType:  optional — client may send "uploaded"; we only store
+//                      "uploaded" when eventImage is non-empty, else ""
 //   }
 //
 // Validation: title, date, time, location, and description must all be
@@ -200,6 +230,7 @@ app.post("/api/events", async (req, res) => {
       category,
       description,
       creatorUsername,
+      eventImage,
     } = req.body || {};
 
     // Helper: true only if the value is a non-empty string after trimming.
@@ -221,6 +252,14 @@ app.post("/api/events", async (req, res) => {
       });
     }
 
+    // Optional flyer / cover image — stored exactly as produced by the
+    // frontend (readAsDataURL). eventImageType is always "" or "uploaded"
+    // based on whether bytes were actually saved (not only what the client claimed).
+    const imageStr =
+      typeof eventImage === "string" && eventImage.trim() !== ""
+        ? eventImage.trim()
+        : "";
+
     // Build the document. We trim every string so we don't store stray
     // whitespace, and we default the optional fields to empty strings so
     // the response shape is always predictable.
@@ -233,10 +272,12 @@ app.post("/api/events", async (req, res) => {
       description: description.trim(),
       creatorUsername:
         typeof creatorUsername === "string" ? creatorUsername.trim() : "",
+      eventImage: imageStr,
+      eventImageType: imageStr ? "uploaded" : "",
     });
 
     // 201 Created + the saved event (including its id and createdAt).
-    res.status(201).json(newEvent);
+    res.status(201).json(shapePublicEvent(newEvent));
   } catch (err) {
     console.error("POST /api/events failed:", err);
     res.status(500).json({ error: "Could not create event." });
@@ -323,7 +364,9 @@ async function authorizeEventChange(eventId, body) {
 //   - any user whose live MongoDB role is "admin".
 //
 // Body fields that may be updated (all optional — only provided ones change):
-//   title, date, time, location, category, description
+//   title, date, time, location, category, description, eventImage
+// Including `eventImage: ""` clears the stored picture; the server sets
+// eventImageType to "uploaded" when eventImage is non-empty, else "".
 // Body must also include the requester identity:
 //   { username | email, role }    (role is informational; backend re-verifies)
 app.put("/api/events/:id", async (req, res) => {
@@ -333,7 +376,7 @@ app.put("/api/events/:id", async (req, res) => {
       return res.status(auth.status).json({ error: auth.error });
     }
 
-    const { title, date, time, location, category, description } =
+    const { title, date, time, location, category, description, eventImage } =
       req.body || {};
 
     // Whitelist the editable fields. Anything else in the body is
@@ -357,6 +400,16 @@ app.put("/api/events/:id", async (req, res) => {
     if (typeof description === "string" && description.trim() !== "") {
       updates.description = description.trim();
     }
+    // Image updates are sent only when the client changed the file on the
+    // edit form (see script.js). Key must be present to avoid wiping the
+    // picture on unrelated field edits.
+    if (Object.prototype.hasOwnProperty.call(req.body || {}, "eventImage")) {
+      if (typeof eventImage === "string") {
+        const trimmed = eventImage.trim();
+        updates.eventImage = trimmed;
+        updates.eventImageType = trimmed ? "uploaded" : "";
+      }
+    }
 
     if (Object.keys(updates).length === 0) {
       return res
@@ -367,7 +420,7 @@ app.put("/api/events/:id", async (req, res) => {
     Object.assign(auth.event, updates);
     const saved = await auth.event.save();
 
-    res.json({ message: "Event updated.", event: saved });
+    res.json({ message: "Event updated.", event: shapePublicEvent(saved) });
   } catch (err) {
     console.error("PUT /api/events/:id failed:", err);
     res.status(500).json({ error: "Could not update event." });
@@ -1203,18 +1256,8 @@ app.get("/api/rsvps/:username", async (req, res) => {
 
     // .lean() skips the Event model's toJSON transform, so we shape the
     // public event payload explicitly here. This also doubles as a
-    // whitelist — only fields listed below are ever sent to the client.
-    const safeEvents = events.map((event) => ({
-      id: event._id.toString(),
-      title: event.title || "",
-      date: event.date || "",
-      time: event.time || "",
-      location: event.location || "",
-      category: event.category || "",
-      description: event.description || "",
-      creatorUsername: event.creatorUsername || "",
-      createdAt: event.createdAt || null,
-    }));
+    // whitelist — reuse the same shape as GET /api/events.
+    const safeEvents = events.map(shapePublicEvent);
 
     res.json(safeEvents);
   } catch (err) {

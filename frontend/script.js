@@ -79,6 +79,29 @@ function applyA11ySettings() {
 applyA11ySettings();
 
 
+// ---------------------------------------------------------------------------
+// Read a user's chosen image file as a Base64 data URL (matches what MongoDB stores).
+// We return a Promise so the form waits for THIS to finish BEFORE fetch() —
+// otherwise the POST can fire while FileReader is still running (image would save as empty).
+// ---------------------------------------------------------------------------
+function readLocalImageFileAsDataURL(file) {
+  return new Promise(function (resolve, reject) {
+    if (!file) {
+      resolve("");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    };
+    reader.onerror = function () {
+      reject(new Error("Could not read the image file."));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+
 // ===========================================================================
 // 3) AUTH HELPERS (login state lives in localStorage)
 // ===========================================================================
@@ -400,6 +423,21 @@ document.addEventListener("DOMContentLoaded", function () {
       .replace(/'/g, "&#39;");
   }
 
+  // Only allow real image data URLs in <img src="..."> — never pass through
+  // random strings from the network, which could trick the browser into
+  // running javascript: URLs or other nasty schemes.
+  function getSanitizedEventImageSrc(raw) {
+    if (!raw || typeof raw !== "string") return "";
+    const s = raw.trim();
+    // Browser data URLs typically look like: data:image/jpeg;base64,... — but
+    // some formats add extra MIME parameters; keep prefix check permissive so
+    // valid stored images survive a reload.
+    if (/^data:image\/.+;base64,/i.test(s)) {
+      return s;
+    }
+    return "";
+  }
+
   function formatEventDate(dateString) {
     if (!dateString) return "";
     const parsed = new Date(dateString);
@@ -653,7 +691,26 @@ document.addEventListener("DOMContentLoaded", function () {
     // We only render the "Created by" line when a non-empty username exists.
     const safeCreator = escapeHtml(event.creatorUsername || "");
 
-    let html = "<div class='event-card-header'>";
+    const imgSrc = getSanitizedEventImageSrc(event.eventImage);
+
+    let html = "<div class='event-card-media'>";
+    if (imgSrc) {
+      // src is validated by getSanitizedEventImageSrc (data:image/*;base64,...)
+      // Escape single quotes only so the attribute stays well-formed.
+      html +=
+        "<img class='event-card-image' src='" +
+        imgSrc.replace(/'/g, "%27") +
+        "' alt='' loading='lazy' />";
+    } else {
+      html +=
+        "<div class='event-card-image-placeholder' aria-hidden='true'>" +
+          "<span class='event-card-image-placeholder-icon'>\uD83D\uDDBC\uFE0F</span>" +
+          "<span class='event-card-image-placeholder-text'>No image</span>" +
+        "</div>";
+    }
+    html += "</div>";
+
+    html += "<div class='event-card-header'>";
     html += "<h3>" + safeTitle + "</h3>";
     if (categoryLabel) {
       html += "<span class='event-card-category'>" + categoryLabel + "</span>";
@@ -864,6 +921,14 @@ document.addEventListener("DOMContentLoaded", function () {
   const editLocationInput = document.getElementById("edit-event-location");
   const editCategoryInput = document.getElementById("edit-event-category");
   const editDescriptionInput = document.getElementById("edit-event-description");
+  const editImageInput = document.getElementById("edit-event-image");
+  const editImageRemoveBtn = document.getElementById(
+    "edit-event-image-remove-btn"
+  );
+  const editImagePreview = document.getElementById("edit-event-image-preview");
+  const editImagePlaceholder = document.getElementById(
+    "edit-event-image-placeholder"
+  );
   const editSubmitBtn = document.getElementById("edit-event-submit-btn");
   const editMessage = document.getElementById("edit-event-message");
   const editCloseBtn = document.getElementById("edit-event-close-btn");
@@ -872,6 +937,16 @@ document.addEventListener("DOMContentLoaded", function () {
   // Track which DOM card we're editing so the success path can update
   // it in place without a full re-fetch of the events list.
   let editingCard = null;
+  // Mirror of the fetched event object for that card (used on save).
+  // This fixes a subtle bug: the submit handler must not rely on a
+  // variable named `event` from another function's scope.
+  let editingEventRef = null;
+
+  // When true, the next PUT includes `eventImage` so the server can update
+  // or clear the picture. When false, text fields may change but the image
+  // in MongoDB is left alone.
+  let editShouldSendImagePatch = false;
+  let editImageValueForPut = "";
 
   function showEditMessage(text, type) {
     if (!editMessage) return;
@@ -879,6 +954,20 @@ document.addEventListener("DOMContentLoaded", function () {
     editMessage.classList.remove("is-success", "is-error");
     if (type === "success") editMessage.classList.add("is-success");
     if (type === "error") editMessage.classList.add("is-error");
+  }
+
+  function syncEditImagePreviewUi(imageString) {
+    if (!editImagePreview || !editImagePlaceholder) return;
+    const src = getSanitizedEventImageSrc(imageString || "");
+    if (src) {
+      editImagePreview.src = src;
+      editImagePreview.classList.remove("is-hidden");
+      editImagePlaceholder.classList.add("is-hidden");
+    } else {
+      editImagePreview.removeAttribute("src");
+      editImagePreview.classList.add("is-hidden");
+      editImagePlaceholder.classList.remove("is-hidden");
+    }
   }
 
   // Convert a stored time like "18:00" or "6:00 PM" into the strict
@@ -914,6 +1003,11 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     editingCard = card;
+    editingEventRef = event;
+    editShouldSendImagePatch = false;
+    editImageValueForPut = "";
+    if (editImageInput) editImageInput.value = "";
+    syncEditImagePreviewUi(event.eventImage || "");
     showEditMessage("", null);
 
     editIdInput.value = event.id || "";
@@ -933,11 +1027,59 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!editOverlay) return;
     editOverlay.classList.add("is-hidden");
     editingCard = null;
+    editingEventRef = null;
+    editShouldSendImagePatch = false;
+    editImageValueForPut = "";
+    if (editImageInput) editImageInput.value = "";
     showEditMessage("", null);
   }
 
   if (editCloseBtn) editCloseBtn.addEventListener("click", closeEditEventModal);
   if (editCancelBtn) editCancelBtn.addEventListener("click", closeEditEventModal);
+
+  // New image picked in the modal: read as Base64 data URL only if it looks
+  // like an image MIME type — same idea as add-event.html.
+  if (editImageInput) {
+    editImageInput.addEventListener("change", function () {
+      const file = editImageInput.files && editImageInput.files[0];
+      if (!file) return;
+      if (!file.type || file.type.indexOf("image/") !== 0) {
+        showEditMessage("Please choose an image file (PNG, JPEG, etc.).", "error");
+        editImageInput.value = "";
+        return;
+      }
+
+      const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+      if (file.size > MAX_IMAGE_BYTES) {
+        showEditMessage("Please choose an image under 2 MB.", "error");
+        editImageInput.value = "";
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        const result = reader.result;
+        if (typeof result !== "string") return;
+        editShouldSendImagePatch = true;
+        editImageValueForPut = result;
+        syncEditImagePreviewUi(result);
+        showEditMessage("", null);
+      };
+      reader.onerror = function () {
+        showEditMessage("Could not read that file. Try a different image.", "error");
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  if (editImageRemoveBtn) {
+    editImageRemoveBtn.addEventListener("click", function () {
+      if (editImageInput) editImageInput.value = "";
+      editShouldSendImagePatch = true;
+      editImageValueForPut = "";
+      syncEditImagePreviewUi("");
+    });
+  }
 
   // Click the dark backdrop (but not the inner window) to close.
   if (editOverlay) {
@@ -997,75 +1139,141 @@ document.addEventListener("DOMContentLoaded", function () {
       editSubmitBtn.disabled = true;
       showEditMessage("Saving changes\u2026", null);
 
-      fetch(EVENTS_API_URL + "/" + encodeURIComponent(eventId), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: user.username,
-          email: user.email || "",
-          role: user.role || "user",
-          title: title,
-          date: date,
-          time: time,
-          location: location,
-          category: category,
-          description: description,
-        }),
-      })
-        .then(function (response) {
-          return response
-            .json()
-            .then(function (data) {
-              return { ok: response.ok, data: data };
-            })
-            .catch(function () {
-              return { ok: response.ok, data: {} };
-            });
-        })
-        .then(function (result) {
-          editSubmitBtn.disabled = false;
+      const payload = {
+        username: user.username,
+        email: user.email || "",
+        role: user.role || "user",
+        title: title,
+        date: date,
+        time: time,
+        location: location,
+        category: category,
+        description: description,
+      };
 
-          if (!result.ok) {
-            const message =
-              (result.data && result.data.error) || "Could not update event.";
-            showEditMessage(message, "error");
-            return;
+      function sendEditPut(finalPayload) {
+        return fetch(
+          EVENTS_API_URL + "/" + encodeURIComponent(eventId),
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(finalPayload),
           }
+        )
+          .then(function (response) {
+            return response
+              .json()
+              .then(function (data) {
+                return { ok: response.ok, data: data };
+              })
+              .catch(function () {
+                return { ok: response.ok, data: {} };
+              });
+          })
+          .then(function (result) {
+            editSubmitBtn.disabled = false;
 
-          // Replace the in-memory event object's fields so any
-          // subsequent click on this card sees the new values.
-          const updated = (result.data && result.data.event) || {};
-          event.title = updated.title || title;
-          event.date = updated.date || date;
-          event.time = updated.time !== undefined ? updated.time : time;
-          event.location = updated.location || location;
-          event.category =
-            updated.category !== undefined ? updated.category : category;
-          event.description = updated.description || description;
+            if (!result.ok) {
+              const message =
+                (result.data && result.data.error) || "Could not update event.";
+              showEditMessage(message, "error");
+              return;
+            }
 
-          // Swap the card in place with a freshly rendered version so
-          // the user sees the new values without a full page reload.
-          if (editingCard && editingCard.parentNode) {
-            const rsvpedSet =
-              editingCard.querySelector(".rsvp-btn.is-rsvped") !== null
-                ? new Set([event.id])
-                : new Set();
-            const newCard = createEventCard(event, rsvpedSet);
-            editingCard.parentNode.replaceChild(newCard, editingCard);
+            if (!editingEventRef) {
+              showEditMessage(
+                "Lost track of this event. Refresh the page.",
+                "error"
+              );
+              return;
+            }
+
+            // Replace the in-memory event object's fields so any
+            // subsequent click on this card sees the new values.
+            const updated = (result.data && result.data.event) || {};
+            editingEventRef.title = updated.title || title;
+            editingEventRef.date = updated.date || date;
+            editingEventRef.time =
+              updated.time !== undefined ? updated.time : time;
+            editingEventRef.location = updated.location || location;
+            editingEventRef.category =
+              updated.category !== undefined ? updated.category : category;
+            editingEventRef.description = updated.description || description;
+            if (updated.eventImage !== undefined) {
+              editingEventRef.eventImage = updated.eventImage;
+            }
+            if (updated.eventImageType !== undefined) {
+              editingEventRef.eventImageType = updated.eventImageType;
+            }
+
+            // Swap the card in place with a freshly rendered version so
+            // the user sees the new values without a full page reload.
+            if (editingCard && editingCard.parentNode) {
+              const rsvpedSet =
+                editingCard.querySelector(".rsvp-btn.is-rsvped") !== null
+                  ? new Set([editingEventRef.id])
+                  : new Set();
+              const newCard = createEventCard(editingEventRef, rsvpedSet);
+              editingCard.parentNode.replaceChild(newCard, editingCard);
+            }
+
+            showEditMessage("Event updated.", "success");
+            showEventsBanner("Event updated.", "success");
+
+            // Close the modal after a short pause so the success message
+            // is visible for a moment.
+            setTimeout(closeEditEventModal, 600);
+          })
+          .catch(function (err) {
+            console.error("PUT /api/events/:id failed:", err);
+            editSubmitBtn.disabled = false;
+            showEditMessage(
+              "Could not reach the server. Please try again later.",
+              "error"
+            );
+          });
+      }
+
+      // Image patch: ALWAYS re-read the file from the input before PUT if there
+      // is one selected, so Save never beats FileReader.onload.
+      let imagePromise = Promise.resolve(null);
+      if (editShouldSendImagePatch) {
+        const pendingFile =
+          editImageInput && editImageInput.files && editImageInput.files[0];
+        if (pendingFile) {
+          imagePromise = readLocalImageFileAsDataURL(pendingFile);
+        }
+      }
+
+      imagePromise
+        .then(function (freshDataUrlOrNull) {
+          if (!editShouldSendImagePatch) {
+            return payload;
           }
-
-          showEditMessage("Event updated.", "success");
-          showEventsBanner("Event updated.", "success");
-
-          // Close the modal after a short pause so the success message
-          // is visible for a moment.
-          setTimeout(closeEditEventModal, 600);
+          const trimmedFromFile =
+            typeof freshDataUrlOrNull === "string"
+              ? freshDataUrlOrNull.trim()
+              : "";
+          let imgVal = "";
+          if (
+            editImageInput &&
+            editImageInput.files &&
+            editImageInput.files[0]
+          ) {
+            imgVal = trimmedFromFile;
+          } else {
+            imgVal = (editImageValueForPut || "").trim();
+          }
+          payload.eventImage = imgVal;
+          payload.eventImageType = imgVal ? "uploaded" : "";
+          return payload;
         })
+        .then(sendEditPut)
         .catch(function (err) {
-          console.error("PUT /api/events/:id failed:", err);
+          console.warn("Reading edit image:", err);
           editSubmitBtn.disabled = false;
           showEditMessage(
-            "Could not reach the server. Please try again later.",
+            "Could not read the image file. Choose again or tap Remove.",
             "error"
           );
         });
@@ -1078,6 +1286,7 @@ document.addEventListener("DOMContentLoaded", function () {
     for (let i = 0; i < SKELETON_COUNT; i++) {
       html +=
         "<div class='event-card skeleton-card' aria-hidden='true'>" +
+          "<div class='skeleton-card-media'></div>" +
           "<div class='skeleton-line title'></div>" +
           "<div class='skeleton-line short'></div>" +
           "<div class='skeleton-line short'></div>" +
@@ -5011,6 +5220,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const descriptionInput = document.getElementById("event-description");
   const submitBtn = document.getElementById("add-event-submit-btn");
   const messageEl = document.getElementById("add-event-message");
+  const imageInput = document.getElementById("event-image");
+  const imagePreviewWrap = document.getElementById("event-image-preview-wrap");
+  const imagePreviewImg = document.getElementById("event-image-preview");
+
+  let pendingEventImageBase64 = "";
 
   const ADD_EVENT_API_URL = "http://localhost:3000/api/events";
 
@@ -5025,6 +5239,47 @@ document.addEventListener("DOMContentLoaded", function () {
     messageEl.textContent = text;
     messageEl.classList.remove("is-success", "is-error");
     if (type) messageEl.classList.add("is-" + type);
+  }
+
+  if (imageInput && imagePreviewWrap && imagePreviewImg) {
+    imageInput.addEventListener("change", function () {
+      pendingEventImageBase64 = "";
+      imagePreviewWrap.classList.add("is-hidden");
+      imagePreviewImg.removeAttribute("src");
+
+      const file = imageInput.files && imageInput.files[0];
+      if (!file) return;
+
+      if (!file.type || file.type.indexOf("image/") !== 0) {
+        showMsg("Please choose an image file (PNG, JPEG, GIF, WebP, etc.).", "error");
+        imageInput.value = "";
+        return;
+      }
+
+      // Keep uploads beginner-friendly — huge photos can blow past MongoDB's
+      // ~16MB per-document limit once Base64-encoded.
+      const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+      if (file.size > MAX_IMAGE_BYTES) {
+        showMsg("Please choose an image under 2 MB.", "error");
+        imageInput.value = "";
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function () {
+        const result = reader.result;
+        if (typeof result !== "string") return;
+        pendingEventImageBase64 = result;
+        imagePreviewImg.src = result;
+        imagePreviewWrap.classList.remove("is-hidden");
+        showMsg("", null);
+      };
+      reader.onerror = function () {
+        showMsg("Could not read that file. Try a different image.", "error");
+        imageInput.value = "";
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   addEventForm.addEventListener("submit", function (event) {
@@ -5066,22 +5321,40 @@ document.addEventListener("DOMContentLoaded", function () {
     if (submitBtn) submitBtn.disabled = true;
     showMsg("Creating event\u2026", "info");
 
-    fetch(ADD_EVENT_API_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: title,
-        date: date,
-        time: time,
-        location: location,
-        category: category,
-        description: description,
-        creatorUsername: creatorUsername
+    const chosenFile =
+      imageInput && imageInput.files && imageInput.files[0];
+
+    // If something is picked in <input type="file"> we read it AGAIN here —
+    // not only in the change handler — so Submit never beats FileReader.onload
+    // (classic cause of \"preview works but DB has no image\").
+    const imageReadPromise = chosenFile
+      ? readLocalImageFileAsDataURL(chosenFile)
+      : Promise.resolve(pendingEventImageBase64 || "");
+
+    imageReadPromise
+      .then(function (imageBase64String) {
+        const trimmedImg =
+          typeof imageBase64String === "string"
+            ? imageBase64String.trim()
+            : "";
+
+        return fetch(ADD_EVENT_API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: title,
+            date: date,
+            time: time,
+            location: location,
+            category: category,
+            description: description,
+            creatorUsername: creatorUsername,
+            eventImage: trimmedImg,
+            eventImageType: trimmedImg ? "uploaded" : "",
+          }),
+        });
       })
-    })
       .then(function (response) {
-        // Always read the JSON body so we can show the backend's exact
-        // error message (e.g. "Please provide title, date, ...").
         return response
           .json()
           .then(function (data) {
@@ -5107,11 +5380,22 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .catch(function (error) {
         console.error("POST /api/events failed:", error);
+        if (submitBtn) submitBtn.disabled = false;
+        if (
+          chosenFile &&
+          error &&
+          String(error.message || "").indexOf("Could not read") !== -1
+        ) {
+          showMsg(
+            "Could not read the image file. Try a different photo.",
+            "error"
+          );
+          return;
+        }
         showMsg(
           "Could not reach the server. Please try again later.",
           "error"
         );
-        if (submitBtn) submitBtn.disabled = false;
       });
   });
 });

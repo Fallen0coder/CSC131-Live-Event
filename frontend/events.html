@@ -138,6 +138,45 @@
           ></textarea>
         </div>
 
+        <!--
+          Optional image update. Change the file only when you want to replace
+          the stored picture; script.js sends eventImage only in that case so
+          other field edits do not wipe the image in MongoDB.
+        -->
+        <div class="form-field">
+          <label for="edit-event-image">Event image (optional)</label>
+          <input
+            type="file"
+            id="edit-event-image"
+            name="eventImage"
+            accept="image/*"
+          />
+          <div class="event-image-edit-actions">
+            <button
+              type="button"
+              id="edit-event-image-remove-btn"
+              class="btn btn-secondary settings-btn"
+            >
+              Remove image
+            </button>
+          </div>
+          <div class="event-form-image-frame">
+            <img
+              id="edit-event-image-preview"
+              class="event-form-image-preview is-hidden"
+              alt="Current or new event image preview"
+            />
+            <div
+              id="edit-event-image-placeholder"
+              class="event-form-image-placeholder"
+              aria-hidden="true"
+            >
+              <span class="event-form-image-placeholder-icon" aria-hidden="true">🖼️</span>
+              <span class="event-form-image-placeholder-text">No image yet</span>
+            </div>
+          </div>
+        </div>
+
         <div class="modal-actions">
           <button
             type="button"
