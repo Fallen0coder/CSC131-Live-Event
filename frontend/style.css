@@ -504,6 +504,13 @@ body {
   .nav-links {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 0.45rem 0.55rem;
+  }
+
+  .nav-links a,
+  .nav-links .nav-logout-btn.nav-link--logout {
+    padding: 0.38rem 0.55rem;
+    font-size: 0.88rem;
   }
 
   .footer-inner {
@@ -2641,7 +2648,7 @@ body.a11y-high-contrast .form-field select {
 }
 
 /* ===========================================================================
-   AUTH HELPER LINK ROW (e.g. "Logout" on the navbar)
+   AUTH HELPER — Log out button (navbar-specific polish lives in section 19)
    =========================================================================== */
 .nav-logout-btn {
   font-family: inherit;
@@ -4945,7 +4952,95 @@ main.page-enter-done {
   opacity: 1;
 }
 
-/* Decorative “profile disc” + settings glyph beside those nav links */
+/* ---------------------------------------------------------------------------
+   Navbar icons — every primary tab uses a nav-link--* class on the <a> or
+   nav-link--logout on the button. Emoji/icons sit in matching “slots” so the
+   row looks visually balanced in light and dark mode. Hover motion uses the
+   same motion tokens as the rest of the app; body.reduce-animations strips it.
+   --------------------------------------------------------------------------- */
+
+/* Shared emoji slot (rounded tile, matches Settings gear treatment). */
+.nav-links a.nav-link--home::before,
+.nav-links a.nav-link--events::before,
+.nav-links a.nav-link--friends::before,
+.nav-links a.nav-link--login::before,
+.nav-links a.nav-link--about::before,
+.nav-links a.nav-link--settings::before {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  flex-shrink: 0;
+  font-size: 0.82rem;
+  line-height: 1;
+  background: var(--color-primary-soft);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--nav-icon-disc-shadow);
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    background-color var(--motion-duration-short) ease;
+}
+
+.nav-links a.nav-link--home::before {
+  content: "🏠";
+}
+.nav-links a.nav-link--events::before {
+  content: "📅";
+}
+.nav-links a.nav-link--friends::before {
+  content: "👥";
+}
+.nav-links a.nav-link--login::before {
+  content: "🔑";
+}
+.nav-links a.nav-link--about::before {
+  content: "ℹ️";
+}
+.nav-links a.nav-link--settings::before {
+  content: "⚙";
+}
+
+/* Subtle lift + glow on the icon tile (works in both themes). */
+.nav-links a.nav-link--home:hover::before,
+.nav-links a.nav-link--events:hover::before,
+.nav-links a.nav-link--friends:hover::before,
+.nav-links a.nav-link--login:hover::before,
+.nav-links a.nav-link--about:hover::before {
+  transform: scale(1.08);
+  border-color: var(--border-card-hover);
+  box-shadow:
+    0 0 16px rgba(37, 99, 235, 0.22),
+    var(--nav-icon-disc-shadow);
+}
+
+body.theme-dark .nav-links a.nav-link--home:hover::before,
+body.theme-dark .nav-links a.nav-link--events:hover::before,
+body.theme-dark .nav-links a.nav-link--friends:hover::before,
+body.theme-dark .nav-links a.nav-link--login:hover::before,
+body.theme-dark .nav-links a.nav-link--about:hover::before {
+  box-shadow:
+    0 0 20px rgba(96, 165, 250, 0.28),
+    0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* Settings keeps a slightly stronger cue (gear rotation). */
+.nav-links a.nav-link--settings:hover::before {
+  transform: scale(1.12) rotate(18deg);
+  border-color: var(--border-card-hover);
+  box-shadow:
+    0 0 18px rgba(99, 102, 241, 0.35),
+    var(--nav-icon-disc-shadow);
+}
+
+body.theme-dark .nav-links a.nav-link--settings:hover::before {
+  background: rgba(99, 102, 241, 0.28);
+}
+
+/* Profile: circular “avatar” disc (distinct from square emoji tiles). */
 .nav-links a.nav-link--profile::before {
   content: "";
   width: 1.35rem;
@@ -4970,10 +5065,22 @@ main.page-enter-done {
   border-color: var(--border-card-hover);
 }
 
-.nav-links a.nav-link--settings::before {
-  content: "⚙";
-  font-size: 0.92rem;
-  line-height: 1;
+/* Log out — same slot + door emoji; inherits row hover from .nav-links rules below. */
+.nav-links .nav-logout-btn.nav-link--logout {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  transition:
+    background-color var(--motion-duration-short) var(--motion-ease-soft),
+    color var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease;
+}
+
+.nav-links .nav-logout-btn.nav-link--logout::before {
+  content: "🚪";
   width: 1.35rem;
   height: 1.35rem;
   display: inline-flex;
@@ -4981,6 +5088,8 @@ main.page-enter-done {
   justify-content: center;
   border-radius: 10px;
   flex-shrink: 0;
+  font-size: 0.82rem;
+  line-height: 1;
   background: var(--color-primary-soft);
   border: 1px solid var(--color-border);
   box-shadow: var(--nav-icon-disc-shadow);
@@ -4991,12 +5100,20 @@ main.page-enter-done {
     background-color var(--motion-duration-short) ease;
 }
 
-.nav-links a.nav-link--settings:hover::before {
-  transform: scale(1.12) rotate(18deg);
+.nav-links .nav-logout-btn.nav-link--logout:hover::before {
+  transform: scale(1.08);
+  border-color: var(--border-card-hover);
 }
 
-body.theme-dark .nav-links a.nav-link--settings:hover::before {
-  background: rgba(99, 102, 241, 0.28);
+.nav-links .nav-logout-btn.nav-link--logout:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(185, 28, 28, 0.12);
+}
+
+body.theme-dark .nav-links .nav-logout-btn.nav-link--logout:hover::before {
+  box-shadow:
+    0 0 18px rgba(248, 113, 113, 0.22),
+    0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .settings-card {
