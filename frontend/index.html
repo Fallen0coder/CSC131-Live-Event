@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <script src="early-init.js"></script>
   <header class="navbar">
     <div class="container nav-content">
       <h1 class="logo">Live Event</h1>
@@ -14,10 +15,10 @@
         <ul class="nav-links">
           <li><a class="active" href="index.html">Home</a></li>
           <li><a href="events.html">Events</a></li>
-          <li id="profile-link" class="is-hidden"><a href="profile.html">Profile</a></li>
+          <li id="profile-link" class="is-hidden"><a href="profile.html" class="nav-link--profile">Profile</a></li>
           <li id="friends-link" class="is-hidden"><a href="friends.html">Friends</a></li>
           <li id="login-link"><a href="login.html">Login</a></li>
-          <li><a href="settings.html">Settings</a></li>
+          <li><a href="settings.html" class="nav-link--settings">Settings</a></li>
           <li><a href="about.html">About Us</a></li>
           <li id="nav-logout-li" class="is-hidden">
             <button type="button" id="nav-logout-btn" class="nav-logout-btn">Log out</button>

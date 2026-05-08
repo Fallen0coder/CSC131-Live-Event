@@ -63,10 +63,12 @@ const A11Y_LARGE_TEXT_KEY = "liveEventA11yLargeText";
 const A11Y_HIGH_CONTRAST_KEY = "liveEventA11yHighContrast";
 
 function applyA11ySettings() {
-  document.body.classList.toggle(
-    "a11y-reduce-motion",
-    localStorage.getItem(A11Y_REDUCE_MOTION_KEY) === "true"
-  );
+  // "Reduce animations" adds BOTH classes so CSS can match the coursework spec
+  // (body.reduce-animations) and older rules (.a11y-reduce-motion).
+  var reduceMotion = localStorage.getItem(A11Y_REDUCE_MOTION_KEY) === "true";
+  document.body.classList.toggle("a11y-reduce-motion", reduceMotion);
+  document.body.classList.toggle("reduce-animations", reduceMotion);
+
   document.body.classList.toggle(
     "a11y-large-text",
     localStorage.getItem(A11Y_LARGE_TEXT_KEY) === "true"
@@ -5056,10 +5058,10 @@ document.addEventListener("DOMContentLoaded", function () {
     header.addEventListener("click", function () {
       const card = header.closest(".settings-card");
       if (!card) return;
-      const willCollapse = !card.classList.contains("is-collapsed");
       card.classList.toggle("is-collapsed");
-      // Keep the ARIA state in sync with what the user actually sees.
-      header.setAttribute("aria-expanded", willCollapse ? "false" : "true");
+      // Expanded when the card body is visible (no .is-collapsed on the article).
+      const expanded = !card.classList.contains("is-collapsed");
+      header.setAttribute("aria-expanded", expanded ? "true" : "false");
     });
   });
 })();
@@ -5972,3 +5974,91 @@ document.addEventListener("DOMContentLoaded", function () {
     confirmPassword.addEventListener("input", updateMatchMessage);
   }
 });
+
+// ===========================================================================
+// Page transitions (multi-page app)
+// ---------------------------------------------------------------------------
+// After each full page load we fade/slide <main> in (CSS .page-enter).
+// When the browser supports the View Transitions API, clicks on normal
+// same-site links to other .html pages use a lightweight crossfade — no
+// SPA framework required. Everything here is skipped when the user turns on
+// "Reduce animations" or when the OS requests reduced motion.
+// ===========================================================================
+(function setupPageMotion() {
+  function prefersReducedMotion() {
+    return (
+      document.body.classList.contains("reduce-animations") ||
+      document.body.classList.contains("a11y-reduce-motion") ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    );
+  }
+
+  var mainEl = document.querySelector("main");
+  if (mainEl && !prefersReducedMotion()) {
+    mainEl.classList.add("page-enter");
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        mainEl.classList.add("page-enter--active");
+      });
+    });
+  } else if (mainEl) {
+    mainEl.classList.add("page-enter-done");
+  }
+
+  if (typeof document.startViewTransition !== "function") return;
+
+  document.addEventListener("click", function (e) {
+    if (prefersReducedMotion()) return;
+
+    var link = e.target.closest("a[href]");
+    if (!link || link.target === "_blank") return;
+
+    if (
+      e.defaultPrevented ||
+      e.button !== 0 ||
+      e.metaKey ||
+      e.ctrlKey ||
+      e.shiftKey ||
+      e.altKey
+    ) {
+      return;
+    }
+
+    var hrefAttr = link.getAttribute("href");
+    if (
+      !hrefAttr ||
+      hrefAttr.startsWith("#") ||
+      hrefAttr.startsWith("javascript:") ||
+      hrefAttr.startsWith("mailto:") ||
+      hrefAttr.startsWith("tel:")
+    ) {
+      return;
+    }
+
+    var url;
+    try {
+      url = new URL(hrefAttr, window.location.href);
+    } catch (err) {
+      return;
+    }
+
+    if (url.origin !== window.location.origin) return;
+
+    var path = url.pathname || "";
+    var looksLikeSitePage =
+      /\.html($|[?#])/i.test(path) ||
+      path === "/" ||
+      path.endsWith("/");
+
+    if (!looksLikeSitePage) return;
+
+    var here = window.location.href.split("#")[0];
+    var dest = url.href.split("#")[0];
+    if (dest === here) return;
+
+    e.preventDefault();
+    document.startViewTransition(function () {
+      window.location.href = url.href;
+    });
+  });
+})();

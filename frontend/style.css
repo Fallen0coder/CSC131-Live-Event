@@ -15,6 +15,16 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+
+  /* Motion tokens — tuned separately for light/dark via .theme-dark overrides below */
+  --motion-duration-fast: 0.18s;
+  --motion-duration-short: 0.22s;
+  --motion-duration-med: 0.38s;
+  --motion-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+  --shadow-card-hover: 0 16px 38px rgba(15, 23, 42, 0.11), 0 0 0 1px rgba(99, 102, 241, 0.07);
+  --border-card-hover: #c7d2fe;
+  --nav-icon-disc-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
 }
 
 * {
@@ -56,6 +66,10 @@ body {
   border-bottom: 1px solid var(--color-border);
   padding: 0.85rem 0;
   box-shadow: var(--shadow-sm);
+  transition:
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    background-color var(--motion-duration-short) ease;
 }
 
 .nav-content {
@@ -78,17 +92,31 @@ body {
 }
 
 .nav-links a {
+  position: relative;
   text-decoration: none;
   color: #374151;
   font-weight: 600;
   padding: 0.4rem 0.7rem;
   border-radius: 8px;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.38rem;
+  transition:
+    background-color var(--motion-duration-short) var(--motion-ease-soft),
+    color var(--motion-duration-short) ease,
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease;
 }
 
 .nav-links a:hover {
   background-color: var(--color-primary-soft);
   color: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.nav-links a:active {
+  transform: translateY(0);
 }
 
 .nav-links a.active {
@@ -315,8 +343,8 @@ body {
 
 .featured-card:hover {
   transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-  border-color: #c7d2fe;
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-card-hover);
 }
 
 .featured-card .featured-badge {
@@ -565,8 +593,8 @@ body {
 
 .event-card:hover {
   transform: translateY(-4px);
-  box-shadow: var(--shadow-lg);
-  border-color: #c7d2fe;
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-card-hover);
 }
 
 /* Full-width image above the card text — stored as Base64 in MongoDB */
@@ -983,6 +1011,10 @@ body.theme-dark .event-creator strong {
   padding: 2rem 2rem 1.75rem;
   box-shadow: 0 8px 24px rgba(31, 41, 55, 0.08);
   border: 1px solid #e5e7eb;
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease;
 }
 
 .login-card h2 {
@@ -1386,15 +1418,32 @@ body.a11y-high-contrast .password-toggle {
 }
 
 .settings-card-body {
-  padding: 1.15rem;
   display: grid;
   gap: 0.9rem;
+  padding: 0 1.15rem;
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-height 0.48s var(--motion-ease-soft),
+    opacity 0.34s var(--motion-ease-out),
+    padding-top 0.34s ease,
+    padding-bottom 0.34s ease,
+    gap 0.28s ease;
 }
 
-/* Collapsed state — hide the body and drop the divider line under the
-   header so the closed card looks like a single neat row. */
+.settings-card:not(.is-collapsed) .settings-card-body {
+  max-height: min(120vh, 2800px);
+  opacity: 1;
+  padding: 1.15rem;
+  pointer-events: auto;
+}
+
 .settings-card.is-collapsed .settings-card-body {
-  display: none;
+  gap: 0;
+  padding-top: 0;
+  padding-bottom: 0;
 }
 
 .settings-card.is-collapsed .settings-card-header {
@@ -1610,6 +1659,9 @@ body.theme-dark {
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 10px 26px rgba(0, 0, 0, 0.38);
   --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --shadow-card-hover: 0 20px 46px rgba(0, 0, 0, 0.55), 0 0 36px rgba(99, 102, 241, 0.14);
+  --border-card-hover: rgba(165, 180, 252, 0.55);
+  --nav-icon-disc-shadow: 0 2px 14px rgba(0, 0, 0, 0.45), 0 0 16px rgba(96, 165, 250, 0.18);
 }
 
 body.theme-dark .navbar {
@@ -1621,10 +1673,20 @@ body.theme-dark .nav-links a {
   color: #cbd5e1;
 }
 
-body.theme-dark .nav-links a:hover,
+body.theme-dark .nav-links a:hover {
+  color: #ffffff;
+  background-color: rgba(99, 102, 241, 0.2);
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.42),
+    0 0 28px rgba(59, 130, 246, 0.14);
+}
+
 body.theme-dark .nav-links a.active {
   color: #ffffff;
-  background-color: rgba(37, 99, 235, 0.22);
+  background-color: rgba(99, 102, 241, 0.26);
+  box-shadow:
+    0 0 0 1px rgba(99, 102, 241, 0.32),
+    0 6px 16px rgba(99, 102, 241, 0.25);
 }
 
 /* Cards and form fields (login/signup/profile/settings) */
@@ -1855,8 +1917,8 @@ body.theme-dark .skeleton-line {
 
 .creator-card:hover {
   transform: translateY(-3px);
-  box-shadow: var(--shadow-lg);
-  border-color: rgba(37, 99, 235, 0.22);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-card-hover);
 }
 
 .creator-avatar {
@@ -1919,12 +1981,15 @@ body.theme-dark .skeleton-line {
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease,
-    box-shadow 0.18s ease, background-color 0.18s ease;
+  transition:
+    transform var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    box-shadow var(--motion-duration-short) ease,
+    background-color var(--motion-duration-short) ease;
 }
 
 .theme-option:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: var(--color-primary);
 }
 
@@ -2525,16 +2590,26 @@ body.theme-dark .hobby-scroll {
 
 /* ===========================================================================
    ACCESSIBILITY MODES (toggled by JS via body classes)
-   - .a11y-reduce-motion : kill animations/transitions
+   - .reduce-animations + .a11y-reduce-motion : strip motion (toggle + legacy)
    - .a11y-large-text    : bumps base font size
    - .a11y-high-contrast : darker borders, stronger text contrast
+
+   We honor BOTH the in-app toggle (body.reduce-animations) and the OS
+   prefers-reduced-motion setting below.
    =========================================================================== */
+body.reduce-animations *,
+body.reduce-animations *::before,
+body.reduce-animations *::after,
 body.a11y-reduce-motion *,
 body.a11y-reduce-motion *::before,
 body.a11y-reduce-motion *::after {
-  animation-duration: 0.001ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.001ms !important;
+  animation: none !important;
+  transition: none !important;
+}
+
+html:has(body.reduce-animations),
+html:has(body.a11y-reduce-motion) {
+  scroll-behavior: auto !important;
 }
 
 body.a11y-large-text {
@@ -2702,8 +2777,8 @@ body.is-editing-profile .profile-display-only {
 
 .user-result-card:hover {
   transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-  border-color: #c7d2fe;
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-card-hover);
 }
 
 /* Profile circle on the left. flex: 0 0 auto keeps it at a fixed size
@@ -2810,6 +2885,17 @@ body.is-editing-profile .profile-display-only {
 .user-add-friend-btn {
   font-size: 0.88rem;
   padding: 0.45rem 0.9rem;
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    background-color var(--motion-duration-short) ease,
+    color var(--motion-duration-short) ease,
+    opacity var(--motion-duration-short) ease;
+}
+
+.user-add-friend-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
 }
 
 .user-add-friend-btn:disabled {
@@ -3577,7 +3663,7 @@ body.theme-dark .event-delete-btn:hover:not(:disabled) {
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  animation: modal-overlay-in 0.18s ease;
+  animation: modal-overlay-in var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .modal-overlay.is-hidden {
@@ -3596,7 +3682,7 @@ body.theme-dark .event-delete-btn:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: modal-window-in 0.22s ease;
+  animation: modal-window-in var(--motion-duration-med) var(--motion-ease-out);
 }
 
 .modal-header {
@@ -3785,23 +3871,6 @@ body.theme-dark .logo {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-}
-
-.nav-links a {
-  transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
-}
-
-body.theme-dark .nav-links a:hover {
-  background-color: rgba(99, 102, 241, 0.20);
-  color: #ffffff;
-}
-
-body.theme-dark .nav-links a.active {
-  background-color: rgba(99, 102, 241, 0.26);
-  color: #ffffff;
-  box-shadow:
-    0 0 0 1px rgba(99, 102, 241, 0.32),
-    0 6px 16px rgba(99, 102, 241, 0.25);
 }
 
 /* Match the navbar logout button to the navbar tone. */
@@ -4268,20 +4337,21 @@ body.theme-dark .modal-overlay {
 }
 
 /* ---------------------------------------------------------------------------
-   15) Reduced motion safety
+   15) Reduced motion safety (OS preference)
    ---------------------------------------------------------------------------
-   Anyone who turned on .a11y-reduce-motion (or the OS preference) gets
-   no transforms or animations from any of the polish effects above.
+   Mirrors the in-app "Reduce animations" toggle when the OS requests
+   less motion (same net effect as body.reduce-animations in CSS).
    --------------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  .featured-card,
-  .event-card,
-  .creator-card,
-  .user-result-card,
-  .creator-avatar,
-  .btn-primary,
-  .login-submit-btn {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
     transition: none !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
   }
 }
 
@@ -4642,4 +4712,141 @@ body.theme-dark .event-avatar {
 body.theme-dark .event-avatar-overflow,
 body.theme-dark .event-attendees-count {
   color: #9ca3af;
+}
+
+/* ===========================================================================
+   19) Motion polish — page enter, navbar icons, elevated surfaces
+   (Honors body.reduce-animations + prefers-reduced-motion via earlier rules.)
+   =========================================================================== */
+
+main.page-enter {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+main.page-enter.page-enter--active {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--motion-duration-med) var(--motion-ease-out),
+    transform 0.55s var(--motion-ease-out);
+}
+
+main.page-enter-done {
+  opacity: 1;
+}
+
+/* Decorative “profile disc” + settings glyph beside those nav links */
+.nav-links a.nav-link--profile::before {
+  content: "";
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: linear-gradient(
+    145deg,
+    var(--color-primary-soft),
+    rgba(99, 102, 241, 0.42)
+  );
+  border: 2px solid var(--color-border);
+  box-shadow: var(--nav-icon-disc-shadow);
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease;
+}
+
+.nav-links a.nav-link--profile:hover::before {
+  transform: scale(1.1);
+  border-color: var(--border-card-hover);
+}
+
+.nav-links a.nav-link--settings::before {
+  content: "⚙";
+  font-size: 0.92rem;
+  line-height: 1;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: var(--color-primary-soft);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--nav-icon-disc-shadow);
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    background-color var(--motion-duration-short) ease;
+}
+
+.nav-links a.nav-link--settings:hover::before {
+  transform: scale(1.12) rotate(18deg);
+}
+
+body.theme-dark .nav-links a.nav-link--settings:hover::before {
+  background: rgba(99, 102, 241, 0.28);
+}
+
+.settings-card {
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease;
+}
+
+.settings-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+body.theme-dark .settings-card:hover {
+  border-color: rgba(129, 140, 248, 0.38);
+}
+
+body.theme-dark .settings-card-header:hover {
+  background-color: rgba(99, 102, 241, 0.09);
+}
+
+.profile-header-card,
+.profile-card-block {
+  transition:
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease;
+}
+
+.profile-header-card:hover,
+.profile-card-block:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-card-hover);
+}
+
+.login-page .login-card:hover,
+.signup-page .login-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: var(--border-card-hover);
+}
+
+.btn:active:not(:disabled),
+.rsvp-btn:active:not(:disabled),
+.featured-view-btn:active,
+.user-add-friend-btn:active:not(:disabled),
+.settings-btn:active,
+.login-submit-btn:active,
+.theme-option:active,
+.danger-btn:active {
+  transform: scale(0.98);
+}
+
+@supports (view-transition-name: none) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 0.38s;
+    animation-timing-function: var(--motion-ease-out);
+  }
 }
