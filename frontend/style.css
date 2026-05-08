@@ -4321,3 +4321,62 @@ h2,
 h3 {
   letter-spacing: -0.02em;
 }
+
+/* ---------------------------------------------------------------------------
+   18) Event card attendee avatar stack
+   ---------------------------------------------------------------------------
+   Small overlapping circular avatars shown below the event creator line.
+   Up to 3 avatars are shown; if more people RSVP'd a "+X" overflow badge
+   and a "X going" count appear beside them.
+   --------------------------------------------------------------------------- */
+.event-attendees-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0.1rem;
+  min-height: 28px;
+}
+
+.event-avatar-stack {
+  display: flex;
+  align-items: center;
+}
+
+.event-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.event-avatar + .event-avatar {
+  margin-left: -8px;
+}
+
+.event-avatar-overflow {
+  margin-left: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+.event-attendees-count {
+  font-size: 0.7rem;
+  color: #6b7280;
+  white-space: nowrap;
+}
+
+body.theme-dark .event-avatar {
+  border-color: #1e293b;
+}
+
+body.theme-dark .event-avatar-overflow,
+body.theme-dark .event-attendees-count {
+  color: #9ca3af;
+}

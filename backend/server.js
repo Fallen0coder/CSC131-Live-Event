@@ -1243,6 +1243,46 @@ app.delete("/api/rsvp", async (req, res) => {
   }
 });
 
+// GET /api/rsvps/event/:eventId
+// Returns the total RSVP count for an event and the profilePicture +
+// profilePictureType for up to the first 3 attendees. Used by the
+// frontend to render stacked avatar dots on each event card.
+//
+// Route ordering note: this must be registered BEFORE /api/rsvps/:username
+// so Express doesn't try to match "event" as a username.
+app.get("/api/rsvps/event/:eventId", async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ error: "Invalid event id." });
+    }
+
+    const rsvps = await RSVP.find({ eventId }).lean();
+    const count = rsvps.length;
+
+    const first3UserIds = rsvps.slice(0, 3).map((r) => r.userId);
+    const users = await User.find({ _id: { $in: first3UserIds } })
+      .select("profilePicture profilePictureType")
+      .lean();
+
+    // Preserve the insertion order of the first 3 RSVPs (find() with $in
+    // can return documents in any order, so we reorder via a map).
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+    const attendees = first3UserIds.map((uid) => {
+      const u = userMap.get(uid.toString());
+      return {
+        profilePicture: u ? u.profilePicture || "" : "",
+        profilePictureType: u ? u.profilePictureType || "default" : "default",
+      };
+    });
+
+    res.json({ count, attendees });
+  } catch (err) {
+    console.error("GET /api/rsvps/event/:eventId failed:", err);
+    res.status(500).json({ error: "Could not load event attendees." });
+  }
+});
+
 // GET /api/rsvps/:username
 // Returns the full Event details for every event the given user has
 // RSVP'd to. Useful for "events I'm going to" lists on the profile or

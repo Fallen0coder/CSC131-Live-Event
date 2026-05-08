@@ -506,6 +506,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // immediately on page load (instead of resetting them to blue every
   // time the page reloads). See fetchMyRsvpedEventIds() below.
   const RSVPS_API_URL = "http://localhost:3000/api/rsvps";
+  // Used to fetch the attendee count + first 3 profile pictures for each
+  // event card's avatar stack. See loadEventAttendees() below.
+  const RSVPS_EVENT_API_URL = "http://localhost:3000/api/rsvps/event";
 
   // -------------------------------------------------------------------------
   // In-page banner (replaces alert() popups for RSVP feedback).
@@ -820,6 +823,82 @@ document.addEventListener("DOMContentLoaded", function () {
   // we render its button in the "RSVP'd" green/disabled state right away
   // so it stays green across page reloads. Defaults to an empty Set so
   // older callers/tests that don't pass it still work.
+  // Fallback solid colours for avatar dots when a user has no uploaded photo.
+  // Indexed by avatar position so the colour is stable across renders.
+  var AVATAR_COLORS = ["#a78bfa", "#34d399", "#fb923c"];
+
+  // Returns true when the string looks like a safe data-URL image we can
+  // put in a background-image (same rule as getSanitizedEventImageSrc).
+  function isSafeDataUrl(s) {
+    return typeof s === "string" && /^data:image\/.+;base64,/i.test(s.trim());
+  }
+
+  // Build and inject the attendee avatar stack into an existing card element.
+  // `data` is the JSON body returned by GET /api/rsvps/event/:eventId.
+  function renderAttendeesRow(container, data) {
+    if (!container) return;
+    var count = (data && typeof data.count === "number") ? data.count : 0;
+    var attendees = (data && Array.isArray(data.attendees)) ? data.attendees : [];
+
+    if (count === 0) {
+      container.innerHTML = "";
+      return;
+    }
+
+    var stackHtml = "<div class='event-avatar-stack'>";
+    for (var i = 0; i < attendees.length; i++) {
+      var a = attendees[i];
+      var style = "";
+      if (
+        a &&
+        a.profilePictureType === "uploaded" &&
+        isSafeDataUrl(a.profilePicture)
+      ) {
+        var escaped = a.profilePicture.replace(/'/g, "%27");
+        style =
+          "background-image:url('" + escaped + "');";
+      } else {
+        style = "background-color:" + (AVATAR_COLORS[i] || "#a78bfa") + ";";
+      }
+      stackHtml += "<div class='event-avatar' style='" + style + "'></div>";
+    }
+    stackHtml += "</div>";
+
+    var overflowHtml = "";
+    if (count > 3) {
+      overflowHtml =
+        "<span class='event-avatar-overflow'>+" + (count - 3) + "</span>";
+    }
+
+    var countHtml =
+      "<span class='event-attendees-count'>" +
+      count +
+      " going</span>";
+
+    container.innerHTML = stackHtml + overflowHtml + countHtml;
+  }
+
+  // Fetch attendee data for a single event and populate its card's
+  // .event-attendees-row placeholder. Silently no-ops on network error so
+  // the rest of the card still works fine.
+  function loadEventAttendees(card, eventId) {
+    if (!card || !eventId) return;
+    var row = card.querySelector(".event-attendees-row");
+    if (!row) return;
+
+    fetch(RSVPS_EVENT_API_URL + "/" + encodeURIComponent(eventId))
+      .then(function (response) {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then(function (data) {
+        if (data) renderAttendeesRow(row, data);
+      })
+      .catch(function (err) {
+        console.warn("Could not load attendees for event " + eventId + ":", err);
+      });
+  }
+
   function createEventCard(event, rsvpedEventIds) {
     const card = document.createElement("article");
     card.className = "event-card";
@@ -895,6 +974,10 @@ document.addEventListener("DOMContentLoaded", function () {
           "<span>Created by <strong>@" + safeCreator + "</strong></span>" +
         "</p>";
     }
+
+    // Attendee avatar stack — populated asynchronously by loadEventAttendees()
+    // after the card is appended to the DOM.
+    html += "<div class='event-attendees-row'></div>";
 
     html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
@@ -1358,6 +1441,9 @@ document.addEventListener("DOMContentLoaded", function () {
                   : new Set();
               const newCard = createEventCard(editingEventRef, rsvpedSet);
               editingCard.parentNode.replaceChild(newCard, editingCard);
+              if (editingEventRef.id) {
+                loadEventAttendees(newCard, editingEventRef.id);
+              }
             }
 
             showEditMessage("Event updated.", "success");
@@ -1547,6 +1633,9 @@ document.addEventListener("DOMContentLoaded", function () {
         events.forEach(function (event) {
           const card = createEventCard(event, rsvpedEventIds);
           eventsContainer.appendChild(card);
+          if (event.id) {
+            loadEventAttendees(card, event.id);
+          }
         });
       })
       .catch(function (error) {
