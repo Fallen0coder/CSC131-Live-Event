@@ -266,7 +266,9 @@ function featuredCategoryLabel(category) {
     career: "Career",
     outdoor: "Outdoor",
     music: "Music",
-    sports: "Sports"
+    sports: "Sports",
+    food: "Food",
+    other: "Other"
   };
   const key = String(category).toLowerCase();
   if (labels[key]) return labels[key];
@@ -495,11 +497,28 @@ if (featuredEventsContainer) {
 
 
 // ===========================================================================
-// 5) EVENTS PAGE: load from backend (unchanged from original)
+// 5) EVENTS PAGE — load events from GET /api/events, category chips filter client-side
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const eventsContainer = document.getElementById("events-container");
   if (!eventsContainer) return;
+
+  // Full event list from GET /api/events — kept in memory so category chips
+  // can filter without refetching. Objects are shared with cards/edit modal.
+  let eventsCacheAll = [];
+  let eventsCacheRsvpedIds = new Set();
+  let activeEventsCategory = "all";
+
+  // Category values that have their own chip (everything else falls under "Other").
+  const EVENT_PRIMARY_CATEGORY_SLUGS = [
+    "social",
+    "career",
+    "tech",
+    "sports",
+    "music",
+    "food",
+    "outdoor",
+  ];
 
   const EVENTS_API_URL = "http://localhost:3000/api/events";
   const RSVP_API_URL = "http://localhost:3000/api/rsvp";
@@ -634,10 +653,13 @@ document.addEventListener("DOMContentLoaded", function () {
       career: "Career",
       outdoor: "Outdoor",
       music: "Music",
-      sports: "Sports"
+      sports: "Sports",
+      food: "Food",
+      other: "Other"
     };
-    if (known[category]) return known[category];
-    return category.charAt(0).toUpperCase() + category.slice(1);
+    const key = String(category).toLowerCase();
+    if (known[key]) return known[key];
+    return key.charAt(0).toUpperCase() + key.slice(1);
   }
 
   // -------------------------------------------------------------------------
@@ -739,6 +761,9 @@ document.addEventListener("DOMContentLoaded", function () {
           // Either a brand-new RSVP (HTTP 201) or the backend's "you have
           // already RSVP'd" response (HTTP 200). Both should end up green.
           markAsRsvped(rsvpButton);
+          if (event && event.id) {
+            eventsCacheRsvpedIds.add(event.id);
+          }
           if (looksLikeAlreadyRsvped(serverText)) {
             showEventsBanner(
               "You\u2019re already RSVP\u2019d to this event.",
@@ -754,6 +779,9 @@ document.addEventListener("DOMContentLoaded", function () {
         // status for the already-RSVP'd case, still end up green.
         if (looksLikeAlreadyRsvped(serverText)) {
           markAsRsvped(rsvpButton);
+          if (event && event.id) {
+            eventsCacheRsvpedIds.add(event.id);
+          }
           showEventsBanner(
             "You\u2019re already RSVP\u2019d to this event.",
             "info"
@@ -802,6 +830,9 @@ document.addEventListener("DOMContentLoaded", function () {
           // delete" as success (it's idempotent). Either way we end up
           // with no RSVP, so we revert to the blue button.
           resetRsvpButton(rsvpButton);
+          if (event && event.id) {
+            eventsCacheRsvpedIds.delete(event.id);
+          }
           showEventsBanner("Your RSVP was canceled.", "success");
           return;
         }
@@ -1135,9 +1166,10 @@ document.addEventListener("DOMContentLoaded", function () {
           return;
         }
 
-        if (card && card.parentNode) {
-          card.parentNode.removeChild(card);
-        }
+        eventsCacheAll = eventsCacheAll.filter(function (e) {
+          return !(e && e.id === event.id);
+        });
+        renderEventsGrid();
         showEventsBanner("Event deleted.", "success");
       })
       .catch(function (err) {
@@ -1979,19 +2011,9 @@ document.addEventListener("DOMContentLoaded", function () {
               editingEventRef.eventImageType = updated.eventImageType;
             }
 
-            // Swap the card in place with a freshly rendered version so
-            // the user sees the new values without a full page reload.
-            if (editingCard && editingCard.parentNode) {
-              const rsvpedSet =
-                editingCard.querySelector(".rsvp-btn.is-rsvped") !== null
-                  ? new Set([editingEventRef.id])
-                  : new Set();
-              const newCard = createEventCard(editingEventRef, rsvpedSet);
-              editingCard.parentNode.replaceChild(newCard, editingCard);
-              if (editingEventRef.id) {
-                loadEventAttendees(newCard, editingEventRef.id);
-              }
-            }
+            // Re-render the grid so category filters stay right after edits
+            // (changing category may hide/show this card under the chip).
+            renderEventsGrid();
 
             showEditMessage("Event updated.", "success");
             showEventsBanner("Event updated.", "success");
@@ -2153,6 +2175,79 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   }
 
+  function normalizeEventCategorySlug(ev) {
+    return String((ev && ev.category) || "").trim().toLowerCase();
+  }
+
+  function eventMatchesCategoryFilter(event, filterSlug) {
+    if (!filterSlug || filterSlug === "all") return true;
+    const cat = normalizeEventCategorySlug(event);
+    if (filterSlug === "other") {
+      return (
+        cat === "" || EVENT_PRIMARY_CATEGORY_SLUGS.indexOf(cat) === -1
+      );
+    }
+    return cat === filterSlug;
+  }
+
+  function showFilteredEmptyState() {
+    eventsContainer.innerHTML =
+      "<div class='events-state'>" +
+      "<div class='events-state-icon' aria-hidden='true'>\uD83D\uDD0D</div>" +
+      "<h3 class='events-state-title'>No events in this category</h3>" +
+      "<p class='events-state-message'>" +
+      "Try another filter above, or choose <strong>All</strong> to see every event." +
+      "</p>" +
+      "</div>";
+  }
+
+  function renderEventsGrid() {
+    eventsContainer.innerHTML = "";
+    if (!Array.isArray(eventsCacheAll) || eventsCacheAll.length === 0) {
+      showEmptyState();
+      return;
+    }
+
+    const filtered = eventsCacheAll.filter(function (ev) {
+      return eventMatchesCategoryFilter(ev, activeEventsCategory);
+    });
+
+    if (filtered.length === 0) {
+      showFilteredEmptyState();
+      return;
+    }
+
+    filtered.forEach(function (event) {
+      const card = createEventCard(event, eventsCacheRsvpedIds);
+      eventsContainer.appendChild(card);
+      if (event.id) {
+        loadEventAttendees(card, event.id);
+      }
+    });
+  }
+
+  function updateEventsFilterChipUi() {
+    const chips = document.querySelectorAll("[data-events-filter]");
+    for (let i = 0; i < chips.length; i++) {
+      const btn = chips[i];
+      const slug = btn.getAttribute("data-events-filter") || "all";
+      const on = slug === activeEventsCategory;
+      btn.classList.toggle("is-active", on);
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    }
+  }
+
+  const eventsFilterSection = document.querySelector(".events-filter-section");
+  if (eventsFilterSection) {
+    eventsFilterSection.addEventListener("click", function (ev) {
+      const btn = ev.target.closest("[data-events-filter]");
+      if (!btn) return;
+      activeEventsCategory = btn.getAttribute("data-events-filter") || "all";
+      updateEventsFilterChipUi();
+      renderEventsGrid();
+    });
+  }
+
   function loadEvents() {
     showLoadingState();
 
@@ -2172,18 +2267,16 @@ document.addEventListener("DOMContentLoaded", function () {
         const events = results[0];
         const rsvpedEventIds = results[1];
 
-        eventsContainer.innerHTML = "";
-        if (!Array.isArray(events) || events.length === 0) {
+        eventsCacheAll = Array.isArray(events) ? events : [];
+        eventsCacheRsvpedIds =
+          rsvpedEventIds instanceof Set ? rsvpedEventIds : new Set();
+
+        if (eventsCacheAll.length === 0) {
           showEmptyState();
           return;
         }
-        events.forEach(function (event) {
-          const card = createEventCard(event, rsvpedEventIds);
-          eventsContainer.appendChild(card);
-          if (event.id) {
-            loadEventAttendees(card, event.id);
-          }
-        });
+        updateEventsFilterChipUi();
+        renderEventsGrid();
       })
       .catch(function (error) {
         // We only land here if the events fetch itself failed —

@@ -567,6 +567,109 @@ body {
   justify-content: center;
 }
 
+/* ---------------------------------------------------------------------------
+   Events page — category filter chips (client-side filter after GET /api/events)
+   --------------------------------------------------------------------------- */
+.events-filter-section {
+  max-width: 920px;
+  margin: 0 auto clamp(1rem, 2vw, 1.75rem);
+  padding: 1rem 1.15rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: rgba(37, 99, 235, 0.05);
+  box-shadow: var(--shadow-sm);
+}
+
+.events-filter-label {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.events-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem 0.55rem;
+}
+
+.events-filter-chip {
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 0.42rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-short) var(--motion-ease-soft),
+    color var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    transform var(--motion-duration-short) var(--motion-ease-out),
+    box-shadow var(--motion-duration-short) ease;
+}
+
+.events-filter-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.15);
+}
+
+.events-filter-chip.is-active {
+  border-color: transparent;
+  color: #ffffff;
+  background-image: var(--gradient-primary);
+  box-shadow:
+    0 6px 18px rgba(37, 99, 235, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.events-filter-chip.is-active:hover {
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow:
+    0 10px 26px rgba(99, 102, 241, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+body.theme-dark .events-filter-section {
+  background: rgba(99, 102, 241, 0.08);
+  border-color: var(--glass-border);
+}
+
+body.theme-dark .events-filter-chip {
+  background: rgba(15, 22, 42, 0.55);
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #e5e7eb;
+}
+
+body.theme-dark .events-filter-chip:hover {
+  border-color: rgba(129, 140, 248, 0.55);
+  color: #c7d2fe;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+body.theme-dark .events-filter-chip.is-active:hover {
+  box-shadow:
+    0 12px 30px rgba(99, 102, 241, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+@media (max-width: 520px) {
+  .events-filter-chip {
+    font-size: 0.82rem;
+    padding: 0.38rem 0.7rem;
+  }
+}
+
 .events-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

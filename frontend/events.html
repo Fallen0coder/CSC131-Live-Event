@@ -52,6 +52,98 @@
       </section>
 
       <!--
+        Category filters: data still comes from GET /api/events once.
+        script.js keeps a copy of that array and shows/hides cards here
+        without another network round-trip (see renderEventsGrid).
+      -->
+      <section
+        class="events-filter-section"
+        aria-label="Filter events by category"
+      >
+        <p class="events-filter-label" id="events-filter-heading">
+          Browse by category
+        </p>
+        <div
+          class="events-filter-chips"
+          role="group"
+          aria-labelledby="events-filter-heading"
+        >
+          <button
+            type="button"
+            class="events-filter-chip is-active"
+            data-events-filter="all"
+            aria-pressed="true"
+          >
+            All
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="social"
+            aria-pressed="false"
+          >
+            Social
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="career"
+            aria-pressed="false"
+          >
+            Career
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="tech"
+            aria-pressed="false"
+          >
+            Tech
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="sports"
+            aria-pressed="false"
+          >
+            Sports
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="music"
+            aria-pressed="false"
+          >
+            Music
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="food"
+            aria-pressed="false"
+          >
+            Food
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="outdoor"
+            aria-pressed="false"
+          >
+            Outdoor
+          </button>
+          <button
+            type="button"
+            class="events-filter-chip"
+            data-events-filter="other"
+            aria-pressed="false"
+          >
+            Other
+          </button>
+        </div>
+      </section>
+
+      <!--
         In-page status banner for RSVP actions. Replaces alert() popups —
         starts hidden, is shown by showEventsBanner() in script.js, and
         auto-hides after a few seconds. role="status" + aria-live="polite"
@@ -127,6 +219,8 @@
             <option value="outdoor">Outdoor</option>
             <option value="music">Music</option>
             <option value="sports">Sports</option>
+            <option value="food">Food</option>
+            <option value="other">Other</option>
           </select>
         </div>
 
