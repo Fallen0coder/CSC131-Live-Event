@@ -14,6 +14,7 @@ const fs = require("fs");
 
 const User = require("./models/User");
 const Event = require("./models/Event");
+const Comment = require("./models/Comment");
 const RSVP = require("./models/RSVP");
 const FriendRequest = require("./models/FriendRequest");
 const Message = require("./models/Message");
@@ -320,6 +321,175 @@ app.post("/api/events", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Event comments (MongoDB-backed)
+// ---------------------------------------------------------------------------
+// GET  /api/events/:id/comments — list comments for one event (newest first).
+// POST /api/events/:id/comments — add a comment (requires a real user).
+// DELETE /api/comments/:commentId — author or admin only (403 otherwise).
+const COMMENT_TEXT_MAX = Comment.COMMENT_TEXT_MAX || 2000;
+
+async function authorizeCommentDelete(commentId, body) {
+  if (!mongoose.Types.ObjectId.isValid(commentId)) {
+    return { ok: false, status: 400, error: "Invalid comment id." };
+  }
+
+  const identifier =
+    (body && (body.username || body.email)) ||
+    (body && (body.requesterUsername || body.requesterEmail)) ||
+    "";
+
+  if (!identifier || typeof identifier !== "string" || identifier.trim() === "") {
+    return {
+      ok: false,
+      status: 400,
+      error: "Please provide your username (or email) in the request body.",
+    };
+  }
+
+  const requester = await findUserByEmailOrUsername(identifier.trim());
+  if (!requester) {
+    return { ok: false, status: 401, error: "Requester not found." };
+  }
+
+  const commentDoc = await Comment.findById(commentId);
+  if (!commentDoc) {
+    return { ok: false, status: 404, error: "Comment not found." };
+  }
+
+  const dbRole = requester.role || "user";
+  if (dbRole === "admin") {
+    return { ok: true, user: requester, comment: commentDoc };
+  }
+
+  const author = (commentDoc.creatorUsername || "").trim().toLowerCase();
+  const me = (requester.username || "").trim().toLowerCase();
+  if (author && author === me) {
+    return { ok: true, user: requester, comment: commentDoc };
+  }
+
+  return {
+    ok: false,
+    status: 403,
+    error: "You can only delete your own comments.",
+  };
+}
+
+app.get("/api/events/:id/comments", async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ error: "Invalid event id." });
+    }
+
+    const eventExists = await Event.exists({ _id: eventId });
+    if (!eventExists) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    // Newest comments first so fresh discussion appears at the top.
+    const rows = await Comment.find({ eventId }).sort({ createdAt: -1 }).lean();
+
+    res.json(
+      rows.map((row) => ({
+        id: row._id.toString(),
+        eventId: row.eventId.toString(),
+        text: row.text,
+        creatorUsername: row.creatorUsername,
+        creatorProfilePicture: row.creatorProfilePicture || "",
+        creatorProfilePictureType: row.creatorProfilePictureType || "default",
+        createdAt: row.createdAt,
+      }))
+    );
+  } catch (err) {
+    console.error("GET /api/events/:id/comments failed:", err.message);
+    res.status(500).json({ error: "Could not load comments." });
+  }
+});
+
+app.post("/api/events/:id/comments", async (req, res) => {
+  try {
+    const eventId = req.params.id;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ error: "Invalid event id." });
+    }
+
+    const eventDoc = await Event.findById(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    const body = req.body || {};
+    const identifier =
+      body.username ||
+      body.email ||
+      body.requesterUsername ||
+      body.requesterEmail ||
+      "";
+
+    if (
+      !identifier ||
+      typeof identifier !== "string" ||
+      identifier.trim() === ""
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Please provide your username (or email)." });
+    }
+
+    const textRaw = body.text;
+    if (typeof textRaw !== "string" || textRaw.trim() === "") {
+      return res.status(400).json({ error: "Comment cannot be empty." });
+    }
+
+    const text = textRaw.trim();
+    if (text.length > COMMENT_TEXT_MAX) {
+      return res.status(400).json({
+        error: `Comment must be at most ${COMMENT_TEXT_MAX} characters.`,
+      });
+    }
+
+    const user = await findUserByEmailOrUsername(identifier.trim());
+    if (!user) {
+      return res
+        .status(401)
+        .json({ error: "User not found. Please log in again." });
+    }
+
+    const pic = typeof user.profilePicture === "string" ? user.profilePicture : "";
+    const picType =
+      user.profilePictureType === "uploaded" ? "uploaded" : "default";
+
+    const created = await Comment.create({
+      eventId: eventDoc._id,
+      text,
+      creatorUsername: user.username,
+      creatorProfilePicture: pic,
+      creatorProfilePictureType: picType,
+    });
+
+    res.status(201).json(created.toJSON());
+  } catch (err) {
+    console.error("POST /api/events/:id/comments failed:", err.message);
+    res.status(500).json({ error: "Could not post comment." });
+  }
+});
+
+app.delete("/api/comments/:commentId", async (req, res) => {
+  try {
+    const auth = await authorizeCommentDelete(req.params.commentId, req.body || {});
+    if (!auth.ok) {
+      return res.status(auth.status).json({ error: auth.error });
+    }
+
+    await Comment.deleteOne({ _id: auth.comment._id });
+    res.json({ message: "Comment deleted." });
+  } catch (err) {
+    console.error("DELETE /api/comments/:commentId failed:", err.message);
+    res.status(500).json({ error: "Could not delete comment." });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Event ownership / permission helpers
 // ---------------------------------------------------------------------------
 // Both PUT and DELETE on /api/events/:id share the same auth flow:
@@ -480,6 +650,7 @@ app.delete("/api/events/:id", async (req, res) => {
 
     await Event.deleteOne({ _id: auth.event._id });
     await RSVP.deleteMany({ eventId: auth.event._id });
+    await Comment.deleteMany({ eventId: auth.event._id });
 
     res.json({ message: "Event deleted." });
   } catch (err) {

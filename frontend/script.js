@@ -511,6 +511,10 @@ document.addEventListener("DOMContentLoaded", function () {
   // Used to fetch the attendee count + first 3 profile pictures for each
   // event card's avatar stack. See loadEventAttendees() below.
   const RSVPS_EVENT_API_URL = "http://localhost:3000/api/rsvps/event";
+  // Event discussion threads — backed by MongoDB (see server.js comments routes).
+  const EVENT_COMMENTS_API_URL = "http://localhost:3000/api/events";
+  const DELETE_COMMENT_API_URL = "http://localhost:3000/api/comments";
+  const COMMENT_BODY_MAX_LEN = 2000;
 
   // -------------------------------------------------------------------------
   // In-page banner (replaces alert() popups for RSVP feedback).
@@ -1256,6 +1260,33 @@ document.addEventListener("DOMContentLoaded", function () {
         "</div>";
     }
 
+    // Comments thread — populated via fetch() once the modal opens.
+    html +=
+      "<section class='event-comments' aria-labelledby='event-comments-heading'>" +
+        "<h4 id='event-comments-heading' class='event-details-section-heading'>" +
+          "Comments" +
+        "</h4>" +
+        "<p id='event-comments-login-hint' class='event-comments-login-hint is-hidden'>" +
+          "<a href='login.html'>Log in</a> to comment." +
+        "</p>" +
+        "<form id='event-comments-form' class='event-comments-form is-hidden' novalidate>" +
+          "<label for='event-comments-input' class='visually-hidden'>Your comment</label>" +
+          "<textarea id='event-comments-input' class='event-comments-textarea' " +
+            "maxlength='" +
+            COMMENT_BODY_MAX_LEN +
+            "' rows='3' placeholder='Share your thoughts\u2026'></textarea>" +
+          "<div class='event-comments-form-actions'>" +
+            "<button type='submit' class='btn btn-primary event-comments-submit'>" +
+              "Post Comment" +
+            "</button>" +
+          "</div>" +
+        "</form>" +
+        "<p id='event-comments-status' class='event-comments-status settings-message' " +
+          "role='status' aria-live='polite'></p>" +
+        "<ul id='event-comments-list' class='event-comments-list' " +
+          "aria-label='Event comments'></ul>" +
+      "</section>";
+
     return html;
   }
 
@@ -1269,8 +1300,188 @@ document.addEventListener("DOMContentLoaded", function () {
       safe + (safe === 1 ? " person going" : " people going");
   }
 
+  // The modal's fetch handlers read this ref so they always know which event
+  // is open (submit comment / delete without stale closures).
+  let detailsModalEventRef = null;
+
+  function formatCommentTimestamp(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleString();
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function escapeHtmlAttr(value) {
+    return escapeHtml(String(value || ""))
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function buildCommentAvatarInner(comment) {
+    if (
+      comment &&
+      comment.creatorProfilePictureType === "uploaded" &&
+      isSafeDataUrl(comment.creatorProfilePicture)
+    ) {
+      const src = comment.creatorProfilePicture.replace(/'/g, "%27");
+      return (
+        "<img class='event-comment-avatar-img' src='" +
+        src +
+        "' alt='' />"
+      );
+    }
+    const entry =
+      typeof getDefaultAvatar === "function"
+        ? getDefaultAvatar((comment && comment.creatorProfilePicture) || "")
+        : null;
+    const emoji = entry && entry.emoji ? entry.emoji : "\uD83D\uDC64";
+    return (
+      "<span class='event-comment-avatar-emoji' aria-hidden='true'>" +
+      emoji +
+      "</span>"
+    );
+  }
+
+  function buildCommentRowHtml(comment, opts) {
+    const opt = opts || {};
+    const safeUser = escapeHtml(comment.creatorUsername || "member");
+    const safeText = escapeHtml(comment.text || "").replace(/\r\n|\n|\r/g, "<br>");
+    const safeTime = escapeHtml(formatCommentTimestamp(comment.createdAt));
+    const isoAttr = escapeHtmlAttr(comment.createdAt || "");
+    const idAttr = escapeHtmlAttr(comment.id || "");
+
+    let deleteBtn = "";
+    if (opt.showDelete && comment.id) {
+      deleteBtn =
+        "<div class='event-comment-actions'>" +
+          "<button type='button' class='btn btn-secondary settings-btn event-comment-delete-btn' " +
+          "data-comment-delete='" +
+          idAttr +
+          "'>" +
+          "Delete" +
+          "</button>" +
+        "</div>";
+    }
+
+    return (
+      "<li class='event-comment-item'>" +
+        "<div class='event-comment-avatar' aria-hidden='true'>" +
+          buildCommentAvatarInner(comment) +
+        "</div>" +
+        "<div class='event-comment-body'>" +
+          "<div class='event-comment-meta'>" +
+            "<span class='event-comment-author'>@" +
+            safeUser +
+            "</span>" +
+            "<time class='event-comment-time' datetime='" +
+            isoAttr +
+            "'>" +
+            safeTime +
+            "</time>" +
+          "</div>" +
+          "<p class='event-comment-text'>" +
+            safeText +
+          "</p>" +
+          deleteBtn +
+        "</div>" +
+      "</li>"
+    );
+  }
+
+  function setCommentsStatus(message, type) {
+    if (!detailsBody) return;
+    const el = detailsBody.querySelector("#event-comments-status");
+    if (!el) return;
+    el.textContent = message || "";
+    el.classList.remove("is-success", "is-error");
+    if (type === "success") el.classList.add("is-success");
+    if (type === "error") el.classList.add("is-error");
+  }
+
+  function renderCommentsIntoList(comments) {
+    if (!detailsBody) return;
+    const listEl = detailsBody.querySelector("#event-comments-list");
+    if (!listEl) return;
+
+    const user = getCurrentUser();
+    const myName =
+      user && user.username ? String(user.username).trim().toLowerCase() : "";
+    const admin = isCurrentUserAdmin();
+
+    if (!comments.length) {
+      listEl.innerHTML =
+        "<li class='event-comments-empty'>No comments yet. Be the first to share!</li>";
+      return;
+    }
+
+    let html = "";
+    for (let i = 0; i < comments.length; i++) {
+      const c = comments[i];
+      const authorLc = (c.creatorUsername || "").trim().toLowerCase();
+      const showDel = admin || (!!myName && authorLc === myName);
+      html += buildCommentRowHtml(c, { showDelete: showDel });
+    }
+    listEl.innerHTML = html;
+  }
+
+  function loadCommentsForDetailsModal(eventId) {
+    if (!detailsBody || !eventId) return;
+    const listEl = detailsBody.querySelector("#event-comments-list");
+    if (!listEl) return;
+
+    listEl.innerHTML =
+      "<li class='event-comments-loading' role='status'>Loading comments\u2026</li>";
+
+    fetch(
+      EVENT_COMMENTS_API_URL + "/" + encodeURIComponent(eventId) + "/comments"
+    )
+      .then(function (response) {
+        return response.json().then(function (data) {
+          return { ok: response.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          listEl.innerHTML =
+            "<li class='event-comments-empty'>Could not load comments.</li>";
+          return;
+        }
+        const rows = Array.isArray(result.data) ? result.data : [];
+        renderCommentsIntoList(rows);
+      })
+      .catch(function () {
+        listEl.innerHTML =
+          "<li class='event-comments-empty'>Could not load comments.</li>";
+      });
+  }
+
+  function syncEventCommentsPanel(event) {
+    if (!detailsBody) return;
+
+    const hint = detailsBody.querySelector("#event-comments-login-hint");
+    const form = detailsBody.querySelector("#event-comments-form");
+    const textarea = detailsBody.querySelector("#event-comments-input");
+
+    const loggedIn = isLoggedIn();
+    if (hint) hint.classList.toggle("is-hidden", loggedIn);
+    if (form) form.classList.toggle("is-hidden", !loggedIn);
+    if (textarea) textarea.value = "";
+
+    setCommentsStatus("", null);
+
+    if (event && event.id) {
+      loadCommentsForDetailsModal(event.id);
+    }
+  }
+
   function openEventDetailsModal(event) {
     if (!detailsOverlay || !detailsBody || !event) return;
+
+    detailsModalEventRef = event;
 
     detailsBody.innerHTML = buildEventDetailsHtml(event);
     detailsOverlay.classList.remove("is-hidden");
@@ -1305,12 +1516,15 @@ document.addEventListener("DOMContentLoaded", function () {
     } else {
       updateGoingCount(0);
     }
+
+    syncEventCommentsPanel(event);
   }
 
   function closeEventDetailsModal() {
     if (!detailsOverlay) return;
     detailsOverlay.classList.add("is-hidden");
     if (detailsBody) detailsBody.innerHTML = "";
+    detailsModalEventRef = null;
   }
 
   // X button closes the modal.
@@ -1319,11 +1533,134 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Click on the dark backdrop (but NOT the inner card) closes the modal.
+  // We also delegate comment actions here so dynamically injected markup works.
   if (detailsOverlay) {
     detailsOverlay.addEventListener("click", function (clickEvent) {
       if (clickEvent.target === detailsOverlay) {
         closeEventDetailsModal();
       }
+    });
+
+    detailsOverlay.addEventListener("submit", function (ev) {
+      if (!ev.target || ev.target.id !== "event-comments-form") return;
+      ev.preventDefault();
+
+      const evt = detailsModalEventRef;
+      const ta =
+        detailsBody && detailsBody.querySelector("#event-comments-input");
+      if (!evt || !evt.id || !ta) return;
+
+      const user = getCurrentUser();
+      if (!user || !isLoggedIn()) {
+        setCommentsStatus("Please log in to comment.", "error");
+        return;
+      }
+
+      const bodyText = ta.value.trim();
+      if (!bodyText) {
+        setCommentsStatus("Comment cannot be empty.", "error");
+        return;
+      }
+
+      const submitBtn = ev.target.querySelector(".event-comments-submit");
+      if (submitBtn) submitBtn.disabled = true;
+      setCommentsStatus("Posting\u2026", null);
+
+      fetch(
+        EVENT_COMMENTS_API_URL +
+          "/" +
+          encodeURIComponent(evt.id) +
+          "/comments",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: user.username,
+            email: user.email,
+            text: bodyText,
+          }),
+        }
+      )
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            const msg =
+              (result.data && result.data.error) || "Could not post comment.";
+            setCommentsStatus(msg, "error");
+            return;
+          }
+          ta.value = "";
+          setCommentsStatus("Comment posted.", "success");
+          loadCommentsForDetailsModal(evt.id);
+        })
+        .catch(function () {
+          setCommentsStatus(
+            "Could not reach the server. Try again later.",
+            "error"
+          );
+        })
+        .finally(function () {
+          if (submitBtn) submitBtn.disabled = false;
+        });
+    });
+
+    detailsOverlay.addEventListener("click", function (ev) {
+      const btn = ev.target.closest("[data-comment-delete]");
+      if (!btn || btn.disabled) return;
+
+      const commentId = btn.getAttribute("data-comment-delete");
+      const evt = detailsModalEventRef;
+      const user = getCurrentUser();
+      if (!commentId || !evt || !evt.id || !user || !isLoggedIn()) return;
+
+      if (
+        !window.confirm(
+          "Delete this comment? This cannot be undone."
+        )
+      ) {
+        return;
+      }
+
+      btn.disabled = true;
+
+      fetch(
+        DELETE_COMMENT_API_URL + "/" + encodeURIComponent(commentId),
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: user.username,
+            email: user.email,
+          }),
+        }
+      )
+        .then(function (response) {
+          return response.json().then(function (data) {
+            return { ok: response.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            const msg =
+              (result.data && result.data.error) ||
+              "Could not delete comment.";
+            showEventsBanner(msg, "error");
+            btn.disabled = false;
+            return;
+          }
+          loadCommentsForDetailsModal(evt.id);
+        })
+        .catch(function () {
+          showEventsBanner(
+            "Could not reach the server. Try again later.",
+            "error"
+          );
+          btn.disabled = false;
+        });
     });
   }
 

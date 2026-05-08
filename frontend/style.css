@@ -4451,7 +4451,7 @@ body.theme-dark .event-view-btn:hover:not(:disabled) {
 
 /* Wider window for the details modal so a 16:9 image can breathe. */
 .event-details-window {
-  max-width: 600px;
+  max-width: min(92vw, 640px);
 }
 
 /* Inner body — comfortable spacing between the image, title, meta list
@@ -4624,6 +4624,215 @@ body.theme-dark .event-details-going .event-details-going-count {
 
 body.theme-dark .event-details-description p {
   color: #e5e7eb;
+}
+
+/* ---------------------------------------------------------------------------
+   Event comments (details modal) — list + composer, light/dark aware.
+   Transitions use motion tokens so body.reduce-animations can strip them.
+   --------------------------------------------------------------------------- */
+.event-comments {
+  margin-top: 0.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+  display: grid;
+  gap: 0.85rem;
+}
+
+body.theme-dark .event-comments {
+  border-top-color: var(--glass-border);
+}
+
+.event-comments-login-hint {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--color-muted);
+}
+
+.event-comments-login-hint a {
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: 6px;
+  transition:
+    color var(--motion-duration-short) ease,
+    background-color var(--motion-duration-short) ease;
+}
+
+.event-comments-login-hint a:hover {
+  text-decoration: underline;
+}
+
+.event-comments-form {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.event-comments-textarea {
+  width: 100%;
+  min-height: 5rem;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 0.95rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  line-height: 1.5;
+  transition:
+    border-color var(--motion-duration-short) ease,
+    box-shadow var(--motion-duration-short) ease;
+}
+
+.event-comments-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+body.theme-dark .event-comments-textarea {
+  background: rgba(2, 6, 23, 0.55);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+body.theme-dark .event-comments-textarea:focus {
+  border-color: rgba(59, 130, 246, 0.85);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.18);
+}
+
+.event-comments-form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.event-comments-status {
+  margin: 0 !important;
+  min-height: 1.25rem;
+  font-size: 0.88rem;
+}
+
+.event-comments-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.event-comment-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: rgba(37, 99, 235, 0.04);
+  transition:
+    border-color var(--motion-duration-short) ease,
+    box-shadow var(--motion-duration-short) ease,
+    transform var(--motion-duration-short) var(--motion-ease-out);
+}
+
+.event-comment-item:hover {
+  border-color: var(--border-card-hover);
+  box-shadow: var(--shadow-sm);
+}
+
+body.theme-dark .event-comment-item {
+  background: rgba(15, 22, 42, 0.55);
+  border-color: var(--glass-border);
+}
+
+body.theme-dark .event-comment-item:hover {
+  border-color: rgba(129, 140, 248, 0.42);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+}
+
+.event-comment-avatar {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-soft);
+  border: 2px solid var(--color-border);
+  box-shadow: var(--nav-icon-disc-shadow, 0 2px 8px rgba(15, 23, 42, 0.08));
+}
+
+.event-comment-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.event-comment-avatar-emoji {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.event-comment-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.event-comment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+}
+
+.event-comment-author {
+  font-weight: 800;
+  font-size: 0.92rem;
+  color: var(--color-text);
+}
+
+.event-comment-time {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.event-comment-text {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.event-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.event-comment-delete-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.event-comments-empty,
+.event-comments-loading {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.92rem;
+  text-align: center;
+}
+
+body.theme-dark .event-comments-empty,
+body.theme-dark .event-comments-loading {
+  border-color: rgba(148, 163, 184, 0.35);
 }
 
 /* Make the modal feel a bit "lifted" — same gradient hairline at the
