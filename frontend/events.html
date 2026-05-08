@@ -200,6 +200,38 @@
     </div>
   </div>
 
+  <!--
+    View Details modal.
+    Opened when the user clicks "View Details" on any event card. Read-only:
+    just shows the full event info (image, title, category, date, time,
+    location, description, creator, and the live attendee count). All
+    content inside #event-details-body is filled in by script.js. The
+    overlay closes via the X button, an outside click, or the Escape key.
+  -->
+  <div
+    id="event-details-overlay"
+    class="modal-overlay is-hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="event-details-title"
+  >
+    <div class="modal-window event-details-window">
+      <header class="modal-header">
+        <h3 id="event-details-title">Event details</h3>
+        <button
+          type="button"
+          id="event-details-close-btn"
+          class="modal-close-btn"
+          aria-label="Close event details"
+        >×</button>
+      </header>
+      <div
+        id="event-details-body"
+        class="modal-body event-details-body"
+      ></div>
+    </div>
+  </div>
+
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-brand">

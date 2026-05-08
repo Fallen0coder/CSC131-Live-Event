@@ -4322,6 +4322,269 @@ h3 {
   letter-spacing: -0.02em;
 }
 
+/* ===========================================================================
+   EVENT "VIEW DETAILS" BUTTON + DETAILS MODAL
+   ---------------------------------------------------------------------------
+   Used on events.html only:
+     - .event-view-btn appears on every event card next to RSVP. It's a
+       soft outlined pill that turns into the brand gradient on hover.
+     - .event-details-* classes style the contents of the read-only
+       details modal that opens when the button is clicked. The outer
+       overlay/window reuse the existing .modal-overlay / .modal-window
+       styles so this block only needs to design the inner content.
+   =========================================================================== */
+
+/* The "View Details" pill. Visually sits between the primary RSVP
+   button (filled) and the edit/delete outlined buttons. */
+.event-view-btn {
+  border: 1px solid rgba(99, 102, 241, 0.45);
+  background: transparent;
+  color: var(--color-primary-dark);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    background-image 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.event-view-btn:hover:not(:disabled) {
+  background-image: var(--gradient-primary);
+  border-color: transparent;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(99, 102, 241, 0.32);
+}
+
+.event-view-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+body.theme-dark .event-view-btn {
+  border-color: rgba(167, 139, 250, 0.55);
+  color: #c7d2fe;
+}
+
+body.theme-dark .event-view-btn:hover:not(:disabled) {
+  background-image: var(--gradient-primary);
+  border-color: transparent;
+  color: #ffffff;
+}
+
+/* Wider window for the details modal so a 16:9 image can breathe. */
+.event-details-window {
+  max-width: 600px;
+}
+
+/* Inner body — comfortable spacing between the image, title, meta list
+   and description. Inherits scroll behavior from .modal-body. */
+.event-details-body {
+  gap: 1.1rem;
+  padding-bottom: 1.4rem;
+}
+
+/* Hero image / placeholder at the top of the modal. */
+.event-details-image-frame {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+body.theme-dark .event-details-image-frame {
+  background: rgba(2, 6, 23, 0.45);
+  border-color: var(--glass-border);
+}
+
+.event-details-image {
+  display: block;
+  width: 100%;
+  height: clamp(180px, 32vw, 280px);
+  object-fit: cover;
+}
+
+.event-details-image-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  height: clamp(180px, 32vw, 280px);
+  background: linear-gradient(
+    135deg,
+    var(--color-primary-soft),
+    rgba(99, 102, 241, 0.06)
+  );
+  color: var(--color-muted);
+}
+
+.event-details-image-placeholder-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+.event-details-image-placeholder-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Title row: big title on the left, category pill on the right. */
+.event-details-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.event-details-title-text {
+  font-size: clamp(1.25rem, 2.6vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.event-details-category {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-primary-dark);
+  background: var(--color-primary-soft);
+  padding: 0.32rem 0.7rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+body.theme-dark .event-details-category {
+  background: rgba(99, 102, 241, 0.22);
+  color: #c7d2fe;
+  border: 1px solid rgba(99, 102, 241, 0.32);
+}
+
+/* Quick-facts list (date / time / location / creator / going). */
+.event-details-meta-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.85rem 1rem;
+  display: grid;
+  gap: 0.5rem;
+  border-radius: 12px;
+  background: rgba(37, 99, 235, 0.05);
+  border: 1px solid var(--color-border);
+}
+
+body.theme-dark .event-details-meta-list {
+  background: rgba(99, 102, 241, 0.10);
+  border-color: var(--glass-border);
+}
+
+.event-details-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--color-text);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.event-details-meta-row strong {
+  color: var(--color-text);
+  font-weight: 600;
+  margin-right: 0.15rem;
+}
+
+body.theme-dark .event-details-meta-row {
+  color: #e5e7eb;
+}
+
+body.theme-dark .event-details-meta-row strong {
+  color: #ffffff;
+}
+
+/* The "Going" line gets a subtle accent so live data feels distinct. */
+.event-details-going .event-details-going-count {
+  font-weight: 700;
+  color: var(--color-primary-dark);
+}
+
+body.theme-dark .event-details-going .event-details-going-count {
+  color: #c7d2fe;
+}
+
+/* "About this event" description block. */
+.event-details-description {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.event-details-section-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-muted);
+  margin: 0;
+}
+
+.event-details-description p {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.98rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+body.theme-dark .event-details-description p {
+  color: #e5e7eb;
+}
+
+/* Make the modal feel a bit "lifted" — same gradient hairline at the
+   top edge that the event-card uses, so the modal feels like an
+   expanded version of the card you clicked. */
+.event-details-window::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--gradient-primary);
+  opacity: 0.85;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  pointer-events: none;
+}
+
+/* Tighten spacing on small phones so the modal doesn't feel cramped. */
+@media (max-width: 480px) {
+  .event-details-body {
+    padding: 1rem;
+    gap: 0.85rem;
+  }
+
+  .event-details-meta-list {
+    padding: 0.7rem 0.85rem;
+  }
+}
+
 /* ---------------------------------------------------------------------------
    18) Event card attendee avatar stack
    ---------------------------------------------------------------------------

@@ -981,6 +981,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
     html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
+    // "View Details" opens a read-only modal with the full event info
+    // (image, description, creator, "X going" count, etc.). It never
+    // touches the backend, so it's safe to show for every event — even
+    // ones the user can't edit or delete.
+    html +=
+      "<button class='event-view-btn' type='button'>View Details</button>";
     // Edit + Delete buttons. Shown when the logged-in user either:
     //   • created this event (case-insensitive username match), OR
     //   • has role === "admin"
@@ -1017,6 +1023,15 @@ document.addEventListener("DOMContentLoaded", function () {
       rsvpButton.addEventListener("click", function (clickEvent) {
         clickEvent.preventDefault();
         sendRsvp(rsvpButton, event);
+      });
+    }
+
+    // "View Details" — opens the read-only details modal for this card.
+    const viewBtn = card.querySelector(".event-view-btn");
+    if (viewBtn) {
+      viewBtn.addEventListener("click", function (clickEvent) {
+        clickEvent.preventDefault();
+        openEventDetailsModal(event);
       });
     }
 
@@ -1129,6 +1144,199 @@ document.addEventListener("DOMContentLoaded", function () {
         button.textContent = originalLabel;
       });
   }
+
+  // -------------------------------------------------------------------------
+  // View Details modal (read-only)
+  // -------------------------------------------------------------------------
+  // The markup lives in events.html (#event-details-overlay). When a user
+  // clicks the "View Details" button on any event card we fill the body
+  // with that event's full info (image, title, category, date, time,
+  // location, description, creator, attendee count) and reveal the
+  // overlay. The modal closes via the X button, an outside click, or
+  // the Escape key.
+  //
+  // This block is purely client-side except for one tiny GET to fetch
+  // the live attendee count from /api/rsvps/event/:id (the same endpoint
+  // the card's avatar stack already uses). RSVP / Edit / Delete buttons
+  // live on the card itself — never inside this modal — so opening it
+  // can never accidentally mutate an event.
+  const detailsOverlay = document.getElementById("event-details-overlay");
+  const detailsBody = document.getElementById("event-details-body");
+  const detailsCloseBtn = document.getElementById("event-details-close-btn");
+
+  // Build the inner HTML of the modal body for one event. All user-
+  // supplied text passes through escapeHtml() and the image src is
+  // sanitized the same way as the cards (only data:image/*;base64,…).
+  function buildEventDetailsHtml(event) {
+    const safeTitle = escapeHtml(event.title || "Untitled event");
+    const safeLocation = escapeHtml(event.location || "");
+    const safeDescription = escapeHtml(event.description || "");
+    const safeCreator = escapeHtml(event.creatorUsername || "");
+    const categoryLabel = escapeHtml(formatCategoryLabel(event.category));
+    const formattedDate = escapeHtml(formatEventDate(event.date));
+    const formattedTime = escapeHtml(formatEventTime(event.time));
+    const imgSrc = getSanitizedEventImageSrc(event.eventImage);
+
+    let html = "";
+
+    // Hero image (or a friendly placeholder).
+    html += "<div class='event-details-image-frame'>";
+    if (imgSrc) {
+      html +=
+        "<img class='event-details-image' src='" +
+        imgSrc.replace(/'/g, "%27") +
+        "' alt='' />";
+    } else {
+      html +=
+        "<div class='event-details-image-placeholder' aria-hidden='true'>" +
+          "<span class='event-details-image-placeholder-icon'>\uD83D\uDDBC\uFE0F</span>" +
+          "<span class='event-details-image-placeholder-text'>No image</span>" +
+        "</div>";
+    }
+    html += "</div>";
+
+    // Title row (title + category badge).
+    html += "<div class='event-details-header'>";
+    html += "<h2 class='event-details-title-text'>" + safeTitle + "</h2>";
+    if (categoryLabel) {
+      html +=
+        "<span class='event-details-category'>" + categoryLabel + "</span>";
+    }
+    html += "</div>";
+
+    // Quick-facts list (date, time, location, creator, going).
+    html += "<ul class='event-details-meta-list'>";
+    if (formattedDate) {
+      html +=
+        "<li class='event-details-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDCC5</span>" +
+          "<span><strong>Date:</strong> " + formattedDate + "</span>" +
+        "</li>";
+    }
+    if (formattedTime) {
+      html +=
+        "<li class='event-details-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\u23F0</span>" +
+          "<span><strong>Time:</strong> " + formattedTime + "</span>" +
+        "</li>";
+    }
+    if (safeLocation) {
+      html +=
+        "<li class='event-details-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDCCD</span>" +
+          "<span><strong>Location:</strong> " + safeLocation + "</span>" +
+        "</li>";
+    }
+    if (safeCreator) {
+      html +=
+        "<li class='event-details-meta-row'>" +
+          "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDC64</span>" +
+          "<span><strong>Created by:</strong> @" + safeCreator + "</span>" +
+        "</li>";
+    }
+    // The going count starts as a friendly loading hint and is replaced
+    // by the live number once the GET /api/rsvps/event/:id call returns.
+    html +=
+      "<li class='event-details-meta-row event-details-going'>" +
+        "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDC65</span>" +
+        "<span><strong>Going:</strong> " +
+          "<span class='event-details-going-count'>\u2026</span>" +
+        "</span>" +
+      "</li>";
+    html += "</ul>";
+
+    // Full description (no clamping in the modal — show it all).
+    if (safeDescription) {
+      html +=
+        "<div class='event-details-description'>" +
+          "<h4 class='event-details-section-heading'>About this event</h4>" +
+          "<p>" + safeDescription + "</p>" +
+        "</div>";
+    }
+
+    return html;
+  }
+
+  // Update the "Going: …" line with the real count once it loads.
+  function updateGoingCount(count) {
+    if (!detailsBody) return;
+    const target = detailsBody.querySelector(".event-details-going-count");
+    if (!target) return;
+    const safe = typeof count === "number" && count >= 0 ? count : 0;
+    target.textContent =
+      safe + (safe === 1 ? " person going" : " people going");
+  }
+
+  function openEventDetailsModal(event) {
+    if (!detailsOverlay || !detailsBody || !event) return;
+
+    detailsBody.innerHTML = buildEventDetailsHtml(event);
+    detailsOverlay.classList.remove("is-hidden");
+
+    // Reset scroll so long descriptions always start from the top.
+    detailsBody.scrollTop = 0;
+
+    // Move keyboard focus to the close button so Esc / Tab navigation
+    // feels expected.
+    setTimeout(function () {
+      if (detailsCloseBtn) detailsCloseBtn.focus();
+    }, 0);
+
+    // Fetch the live attendee count for this event and patch it in.
+    if (event.id) {
+      fetch(RSVPS_EVENT_API_URL + "/" + encodeURIComponent(event.id))
+        .then(function (response) {
+          if (!response.ok) return null;
+          return response.json();
+        })
+        .then(function (data) {
+          if (data && typeof data.count === "number") {
+            updateGoingCount(data.count);
+          } else {
+            updateGoingCount(0);
+          }
+        })
+        .catch(function () {
+          // Network/parse problem — keep showing "…" rather than a wrong
+          // number. The rest of the modal still works.
+        });
+    } else {
+      updateGoingCount(0);
+    }
+  }
+
+  function closeEventDetailsModal() {
+    if (!detailsOverlay) return;
+    detailsOverlay.classList.add("is-hidden");
+    if (detailsBody) detailsBody.innerHTML = "";
+  }
+
+  // X button closes the modal.
+  if (detailsCloseBtn) {
+    detailsCloseBtn.addEventListener("click", closeEventDetailsModal);
+  }
+
+  // Click on the dark backdrop (but NOT the inner card) closes the modal.
+  if (detailsOverlay) {
+    detailsOverlay.addEventListener("click", function (clickEvent) {
+      if (clickEvent.target === detailsOverlay) {
+        closeEventDetailsModal();
+      }
+    });
+  }
+
+  // Escape key closes the details modal — only when it's actually open
+  // and only when the edit modal isn't already taking the key (so we
+  // don't fight with the existing edit-modal handler).
+  document.addEventListener("keydown", function (keyEvent) {
+    if (
+      keyEvent.key === "Escape" &&
+      detailsOverlay &&
+      !detailsOverlay.classList.contains("is-hidden")
+    ) {
+      closeEventDetailsModal();
+    }
+  });
 
   // -------------------------------------------------------------------------
   // Edit Event modal
