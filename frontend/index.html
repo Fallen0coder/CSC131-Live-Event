@@ -1,3 +1,22 @@
+<!--
+  index.html — HOME / LANDING PAGE
+  ---------------------------------------------------------------------------
+  Purpose: Welcome visitors; quick path to Browse Events / Create Account;
+            preview top events filtered from the backend.
+
+  Connects into the wider app:
+    • Shared chrome: navbar + footer (same structure on every .html page).
+    • Navbar items #profile-link, #friends-link, #nav-logout-li, #login-link
+      are shown/hidden by script.js → refreshNavAuthVisibility() using login state.
+    • Hero buttons #browse-btn, #create-account-btn → wired in script.js section 4.
+    • Featured grid #featured-events + status #featured-empty → filled by GET
+      /api/events helpers in script.js (Featured Events block).
+    • Homepage search/filter (#home-search, #home-filter) client-side filter the 3 featured cards.
+
+  Assets: style.css (shared look), early-init.js (theme flash prevention), script.js.
+
+  ── Sections below ──────────────────────────────────────────────────────
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,7 +26,10 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Runs BEFORE paint: restores theme + accessibility classes from localStorage -->
   <script src="early-init.js"></script>
+
+  <!-- SECTION: Navbar — global navigation + auth-aware links -->
   <header class="navbar">
     <div class="container nav-content">
       <h1 class="logo">Live Event</h1>
@@ -28,7 +50,9 @@
     </div>
   </header>
 
+  <!-- SECTION: Main column — Hero → Search strip → Featured events -->
   <main class="home-main">
+    <!-- Hero: marketing message + Browse / Sign up CTAs -->
     <section class="hero hero--home" aria-labelledby="hero-heading">
       <div class="hero-bg" aria-hidden="true"></div>
       <div class="container hero-inner">
@@ -51,6 +75,7 @@
       </div>
     </section>
 
+    <!-- Search + category: filters the Featured Events cards (handled in script.js) -->
     <section class="section search-section" aria-labelledby="search-heading">
       <div class="container">
         <h2 id="search-heading" class="section-title">Find your next experience</h2>
@@ -100,6 +125,7 @@
     </section>
   </main>
 
+  <!-- SECTION: Site footer — static links mirrored on most pages -->
   <footer class="site-footer">
     <div class="container footer-inner">
       <div class="footer-brand">
@@ -130,6 +156,7 @@
     </div>
   </footer>
 
+  <!-- Shared app logic — theme, RSVP, profiles, Friends, Events, Settings, … -->
   <script src="script.js"></script>
 </body>
 </html>

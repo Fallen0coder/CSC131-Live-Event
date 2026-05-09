@@ -1,3 +1,23 @@
+/*
+ * style.css — global stylesheet for every Live Event HTML page.
+ *
+ * PURPOSE & CONNECTIONS
+ *   Loaded from <head> on all pages. Paired with early-init.js + script.js —
+ *   they toggle <body> classes (theme-dark, reduce-animations, is-editing-profile)
+ *   that selectors here react to globally.
+ *
+ * TABLE OF CONTENTS — search “=====” or jump by area:
+ *   • Design tokens     → first :root { … }
+ *   • Navbar, buttons   → .navbar … .btn …
+ *   • Home hero/footer  → .hero … .site-footer
+ *   • Events + modals   → .events-* … .event-card … .modal-overlay
+ *   • Forms/login card  → .login-card … .form-field …
+ *   • Settings accordion → .settings-*
+ *   • Profile / Friends → .profile-* … friend / chat overlays
+ *   • Responsive        → scattered @media next to relevant components
+ *   • Dark + a11y      → body.theme-dark, body.reduce-animations, etc.
+ */
+
 :root {
   --color-bg: #f0f4fa;
   --color-surface: #ffffff;
@@ -27,6 +47,7 @@
   --nav-icon-disc-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
 }
 
+/* Universal box model + whitespace removal */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -56,6 +77,7 @@ body {
   margin: 0 auto;
 }
 
+/* Navbar — mirrored on each HTML route; widths managed by `.container`. */
 .navbar {
   position: sticky;
   top: 0;

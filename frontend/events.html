@@ -1,3 +1,22 @@
+<!--
+  events.html — EVENT DIRECTORY (main catalog)
+  ----------------------------------------------------------------------------
+  Purpose: List all events from the API; RSVP; optional Edit/Delete for owners/admins.
+           Link to Create flow via "+ Add Event" → add-event.html.
+
+  Backend handshake (implemented in script.js section 5):
+    • Primary list GET /api/events
+    • RSVP save/cancel POST/DELETE /api/rsvp (+ helpers for “already RSVP'd” prefetch)
+    • Attendee previews GET /api/rsvps/event/:id
+    • Edit modal PUT /api/events/:id
+    • Read-only modal “View Details” mostly uses in-memory row + attendee GET
+
+  Modals anchored at bottom of BODY:
+    #edit-event-overlay        — PUT flow
+    #event-details-overlay     — read-only deep dive (#event-details-body filled by JS)
+
+  Assets: style.css, early-init.js, script.js
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +27,8 @@
 </head>
 <body>
   <script src="early-init.js"></script>
+
+  <!-- SECTION: Navbar (shared) -->
   <header class="navbar">
     <div class="container nav-content">
       <h1 class="logo">Live Event</h1>
@@ -28,6 +49,7 @@
     </div>
   </header>
 
+  <!-- SECTION: Primary content — chips + banner + cards filled by JS -->
   <main class="events-page">
     <div class="container">
       <section class="events-header">
@@ -156,6 +178,7 @@
         aria-live="polite"
       ></div>
 
+      <!-- Populated entirely by JS: renderEventsGrid() → createEventCard() per item -->
       <div id="events-container" class="events-grid"></div>
     </div>
   </main>

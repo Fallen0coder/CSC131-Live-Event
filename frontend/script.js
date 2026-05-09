@@ -1,11 +1,34 @@
 // ===========================================================================
-// Live Event - frontend script
-// ---------------------------------------------------------------------------
-// Beginner-friendly notes:
-// - This file runs on every page (it's loaded by every HTML file).
-// - We use small "if (element)" guards so code that only belongs on one page
-//   (like the signup form code) just does nothing on the other pages.
-// - All user data is stored in localStorage for now (no real backend).
+// script.js — single shared JavaScript file for all HTML pages (multi-page app)
+//
+// ARCHITECTURE (how to explain in your presentation):
+//   • Not a SPA — each navigation loads a fresh .html file; this script simply
+//     runs again on every page.
+//   • Shared pieces (theme, a11y, navbar auth, logout):
+//       run unconditionally or via tiny DOM guards.
+//   • Page-specific flows (events grid, login form, friends list):
+//       wrapped in DOMContentLoaded + `if (!element) return`.
+//   • Backend communication: REST via fetch("http://localhost:3000/api/...")
+//     for real data (events, auth, RSVPs, friends, messages, profile picture).
+//   • Client caching: login session + prefs + draft profile extras live in
+//     localStorage (see AUTH HELPERS keys + PROFILE_KEY notes).
+//
+// TABLE OF CONTENTS — search these labels to jump quickly:
+//   THEME … ACCESSIBILITY MODES … AUTH HELPERS + navbar …
+//   HOMEPAGE (Featured Events) …
+//   EVENTS PAGE (cards, RSVP, edit modal, View Details modal, event comments) …
+//   LOGIN … SIGNUP …
+//   PROFILE (edit UI, hobbies, avatar + GET/PUT picture API) …
+//   PROFILE user search … FRIENDS (lists, chats, sockets) …
+//   PROFILE “My RSVP’d events” … SETTINGS … ADD EVENT …
+//   PASSWORD UX … PAGE MOTION / VIEW TRANSITIONS …
+//
+// Naming you can cite in Q&A without opening the file deeply:
+//   refreshNavAuthVisibility — shows/hides nav items + Add Event by login state
+//   getCurrentUser / setCurrentUser / logout — auth client state
+//   createEventCard, sendRsvp, openEventDetailsModal, openEditEventModal — events UX
+//
+// ⚠ Important: Same localStorage key names MUST match early-init.js for theme/a11y.
 // ===========================================================================
 
 
@@ -105,7 +128,20 @@ function readLocalImageFileAsDataURL(file) {
 
 
 // ===========================================================================
-// 3) AUTH HELPERS (login state lives in localStorage)
+// 3) AUTH HELPERS — who is logged in? (primarily localStorage)
+// ---------------------------------------------------------------------------
+// After /api/login or /api/signup succeeds, script.js stores JSON under
+// liveEventCurrentUser + sets isLoggedIn = "true". Every other feature reads
+// that snapshot with getCurrentUser() — usually without re-calling login.
+//
+// Navbar / guarded pages:
+//   refreshNavAuthVisibility() — toggles Profile, Friends, Login, Logout, Add Event
+//   DOMContentLoaded (below)   — wires #nav-logout-btn → logout()
+//   Friends / Add-event pages  — hard redirect when not logged in
+//
+// Mention in presentation: Backend still validates tokens/roles server-side on
+// protected routes — the frontend visibility is UX only except where we send
+// username/role alongside DELETE/PUT for events.
 // ===========================================================================
 const LOGGED_IN_KEY = "isLoggedIn";
 const CURRENT_USER_KEY = "liveEventCurrentUser"; // JSON of the logged-in user
@@ -196,6 +232,7 @@ function refreshNavLogoutVisibility() {
 }
 
 document.addEventListener("DOMContentLoaded", function () {
+  // Navbar auth state sync (runs on every HTML page — safe no-op missing elements).
   refreshNavAuthVisibility();
   const navLogoutBtn = document.getElementById("nav-logout-btn");
   if (navLogoutBtn) {
@@ -212,8 +249,10 @@ window.addEventListener("storage", function (event) {
 
 
 // ===========================================================================
-// 4) HOMEPAGE: hero buttons + featured event filter
+// 4) HOMEPAGE — Hero CTAs + live Featured Events (index.html-only pieces)
 // ===========================================================================
+// #browse-btn / #create-account-btn live here; Featured grid hydrates via
+// loadFeaturedEvents() once #featured-events exists.
 const browseButton = document.getElementById("browse-btn");
 if (browseButton) {
   browseButton.addEventListener("click", function () {
@@ -497,7 +536,20 @@ if (featuredEventsContainer) {
 
 
 // ===========================================================================
-// 5) EVENTS PAGE — load events from GET /api/events, category chips filter client-side
+// 5) EVENTS PAGE — browse, RSVP, Edit/Delete, View Details modal
+// ---------------------------------------------------------------------------
+// High-level pipeline (tell the professor in order):
+//   1) loadEvents()         → GET /api/events (+ parallel GET RSVPs list)
+//   2) renderEventsGrid()   → wipes #events-container, calls createEventCard()
+//                             for each filtered event
+//   3) Category chips       → purely client-side filter on eventsCacheAll
+//
+// RSVP: sendRsvp() routes to POST /api/rsvp vs DELETE /api/rsvp depending on button state.
+//
+// Editing: openEditEventModal + form submit sends PUT /api/events/:id.
+//
+// Details: openEventDetailsModal fills #event-details-body (mostly static data;
+//          optional GET attendee count).
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const eventsContainer = document.getElementById("events-container");
@@ -936,6 +988,11 @@ document.addEventListener("DOMContentLoaded", function () {
       });
   }
 
+  // Factory for one `<article class='event-card'>` DOM node (+ wiring).
+  // Responsibilities when presenting:
+  //   • Escape/truncate unsafe strings for HTML injection safety
+  //   • Mount RSVP button + View Details (+ Edit/Delete if canManageEvent)
+  //   • Kick off asynchronous attendee previews after insert
   function createEventCard(event, rsvpedEventIds) {
     const card = document.createElement("article");
     card.className = "event-card";
@@ -1795,6 +1852,8 @@ document.addEventListener("DOMContentLoaded", function () {
     return "";
   }
 
+  // Mutation path for creators/admins — opens #edit-event-overlay, primes inputs,
+  // then submits via the modal form listener (same file) with PUT …/api/events/:id.
   function openEditEventModal(event, card) {
     if (!editOverlay || !editForm) {
       // Modal markup missing — fall back to a friendly message instead
@@ -1906,6 +1965,8 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
+  // Modal submit commits changes to Mongo via PUT `/api/events/:id` built from EVENTS_API_URL.
+  // Server re-checks ownership/admin role independent of DOM button visibility.
   if (editForm) {
     editForm.addEventListener("submit", function (submitEvent) {
       submitEvent.preventDefault();
@@ -2292,11 +2353,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ===========================================================================
-// 6) LOGIN PAGE  (calls the backend /api/login)
+// 6) LOGIN PAGE — POST /api/login
 // ---------------------------------------------------------------------------
-// Sends the email + password to the backend, which checks the bcrypt hash.
-// On success, stores the returned user in localStorage and redirects to the
-// profile page.
+// Talking points:
+//   • Form submit handler (#login-form) gathers email/password JSON → fetch POST
+//   • Success path: maps API `user.name` → our `fullName`, then setCurrentUser()
+//   • UX helper: inner showMsg(text, type) binds to #login-message
+//
+// Mention: bcrypt lives on SERVER — frontend never sees the hash.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const loginForm = document.getElementById("login-form");
@@ -2387,12 +2451,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ===========================================================================
-// 7) SIGNUP PAGE  (calls the backend /api/signup)
+// 7) SIGNUP PAGE — POST /api/signup
 // ---------------------------------------------------------------------------
-// Sends the new account to the backend, which hashes the password and
-// enforces unique email + unique (case-insensitive) username. On success,
-// stores the returned user in localStorage and redirects to the profile
-// page so the user can fill in details/hobbies.
+// Similar shape to Login: validates fields locally, POST JSON, showMsg feedback.
+//
+// Difference: Backend enforces UNIQUE email/username; duplicate errors bubble
+// as JSON text we display verbatim — good UX + shows server owns truth.
+//
+// Strength meter / password match UX lives later in PASSWORD HELPERS section;
+// THAT code never alters fetch payloads.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const signupForm = document.getElementById("signup-form");
@@ -2521,15 +2588,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 // ===========================================================================
-// 8) PROFILE PAGE
+// 8) PROFILE PAGE — display + edit + avatar sync with Mongo
 // ---------------------------------------------------------------------------
-// - Loads profile data from localStorage on page load.
-// - Renders the read-only "display" view by default.
-// - "Edit profile" swaps to inputs (CSS handles the visual swap via the
-//   body.is-editing-profile class).
-// - "Save profile" persists to localStorage and re-renders the display.
-// - Hobby chips are rendered from a static list of 100+ options. The user
-//   can pick up to 8.
+// Two storage stories (explain clearly during Q&A):
+//
+// TEXT FIELDS / HOBBIES
+//   • Persist in browser localStorage under PROFILE_KEY (“liveEventProfile”) via
+//     loadProfile() / saveProfile() / handleSave()
+//   • Great for demos offline; professors may ask whether this also hits Mongo —
+//     today the text SAVE path is intentionally local-first.
+//
+// PROFILE PICTURE
+//   • Backed by backend: GET  /api/profile/:username pulls Base64/state
+//   •           upload: PUT  /api/profile/:username/picture
+//     (wrapped in helpers like fetchProfilePictureFromServer / uploads)
+//
+// UI toggles edit mode with body.is-editing-profile (CSS swaps sections).
+//
+// Hobby grid: HOBBIES_LIST (~100 presets) capped at MAX_HOBBIES.
 // ===========================================================================
 const HOBBIES_LIST = [
   "Basketball","Soccer","Football","Baseball","Volleyball","Tennis","Running",
@@ -3684,21 +3760,26 @@ document.addEventListener("DOMContentLoaded", function () {
 // ===========================================================================
 // 8c) FRIENDS PAGE  (friends.html)
 // ---------------------------------------------------------------------------
-// Loads three lists and lets the user accept/deny incoming friend requests:
-//   1. My friends             →  GET /api/friends/:username
-//   2. Incoming requests      →  GET /api/friends/requests/:username
-//   3. Outgoing requests      →  read from localStorage (key below)
+// Three REST-backed lists:
+//   1. My friends             → GET /api/friends/:username
+//   2. Incoming requests      → GET /api/friends/requests/:username
+//   3. Outgoing requests      → mirrored in localStorage (see key below — backend lacks list)
 //
-// Why outgoing comes from localStorage:
-//   The backend only has an endpoint for INCOMING pending requests. To keep
-//   the page working without changing the backend, we mirror outgoing
-//   requests on the client whenever this app sends one. Future code (e.g.
-//   wiring the profile-page "Add Friend" button to the backend) can append
-//   to this same key, and the entries will show up here automatically.
-//   Format:   [{ receiverUsername: "alice", createdAt: "<iso>" }, ...]
+// Real-time flair (explain if asked): optional Socket.IO client connects to same
+// Express host (`io("http://localhost:3000")`) once username is known — used so
+// new messages/group events can propagate without hammering polling everywhere.
 //
-// Auth: only logged-in users can see this page. If they aren't logged in
-// we redirect to login.html before doing anything else.
+// Lower in this SAME giant listener you'll find:
+//   • Sub-block "3b) GROUP CHATS" — REST under /api/groupchats (+ overlay UI)
+//   • Sub-block "4) MESSAGING / CHAT" — 1:1 DMs via /api/messages (+ conversations list)
+//
+// Auth gate at top: redirects to login.html if !isLoggedIn().
+//
+// Why outgoing is localStorage-only:
+//   Backend exposes INCOMING pending requests, not an "outgoing" list — we mirror
+//   sends client-side whenever someone hits POST /api/friends/request so the UX
+//   still feels complete without another API.
+//   Format stored: [{ receiverUsername: "alice", createdAt: "<iso>" }, ...]
 // ===========================================================================
 const OUTGOING_FRIEND_REQUESTS_KEY_PREFIX = "liveEventOutgoingFriendRequests";
 
@@ -4255,8 +4336,11 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // -------------------------------------------------------------------------
-  // 3b) GROUP CHATS
+  // 3b) GROUP CHATS — multi-user conversations under REST /api/groupchats*
   // -------------------------------------------------------------------------
+  // Create → POST /api/groupchats, listMine → GET with username in path,
+  // Routes build on GROUP_CHATS_API_URL (constant below; points at `/api/groupchats`).
+  // UI shells: group-create-* panel toggles visibility; overlays handle reading.
   const groupChatsListEl = document.getElementById("group-chats-list");
   const groupCreatePanel = document.getElementById("group-create-panel");
   const groupCreateToggleBtn = document.getElementById("group-create-toggle-btn");
@@ -4914,8 +4998,16 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // -------------------------------------------------------------------------
-  // 4) MESSAGING / CHAT
+  // 4) MESSAGING / CHAT — direct messages (REST + optional realtime elsewhere)
   // -------------------------------------------------------------------------
+  // Data model recap for oral exam quick reference:
+  //   Conversations inbox → GET /api/conversations/:username
+  //   Actual chat bubbles → GET /api/messages/:userA/:userB  (ordering server-defined)
+  //   Send DM            → POST /api/messages JSON body with from/to/text
+  //   Read receipts hook → POST /api/messages/read
+  //
+  // DOM overlay (#chat-overlay) isolates UX from the Friends page grid —
+  // closing overlay does not destroy friendship list state.
   var MESSAGES_API_URL = "http://localhost:3000/api/messages";
   var CONVERSATIONS_API_URL = "http://localhost:3000/api/conversations";
   var MESSAGES_READ_API_URL = "http://localhost:3000/api/messages/read";
@@ -5467,13 +5559,18 @@ document.addEventListener("DOMContentLoaded", function () {
 // ===========================================================================
 // 9) SETTINGS PAGE
 // ---------------------------------------------------------------------------
-// - Each section header is a <button> that expands/collapses its body
-//   (accordion-style). Sections start collapsed for a clean look.
-// - Theme + notification + privacy + accessibility toggles persist to
-//   localStorage (instant client-side preferences).
-// - Password change and account deletion go through the real backend
-//   (MongoDB + bcrypt) — see /api/settings/change-password and
-//   /api/settings/delete-account in server.js.
+// UX pattern: accordion — each `.settings-card-header` is a <button> that
+// toggles `.is-collapsed` so CSS hides/show bodies + rotates chevron.
+//
+// Storage split professors love hearing:
+//   • Theme / bell / privacy / accessibility toggles → ONLY localStorage
+//       (wired near top of THIS file via setTheme(), applyA11ySettings(),
+//       etc.) Remember early-init.js re-reads the same keys on every page load
+//       so visuals never flash mismatched preferences.
+//
+// Sensitive operations still hit Mongo:
+//   • Change password POST /api/settings/change-password
+//   • Delete account      POST /api/settings/delete-account
 // ===========================================================================
 
 // ——— Accordion: collapsible settings sections ———

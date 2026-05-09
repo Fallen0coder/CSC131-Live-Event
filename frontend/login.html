@@ -1,3 +1,15 @@
+<!--
+  login.html — AUTHENTICATION (existing users)
+  ---------------------------------------------------------------------------
+  Purpose: Collect credentials, let backend verify bcrypt hash.
+
+  Frontend wiring lives in script.js section 6 (#login-form submit → POST).
+  Successful login stores user JSON in localStorage + redirects profile.html.
+
+  Eye toggle UX is delegated to PASSWORD UX HELPERS module (purely visual).
+
+  Assets: style.css, early-init.js, script.js
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>

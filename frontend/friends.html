@@ -1,3 +1,20 @@
+<!--
+  friends.html — SOCIAL GRAPH + CHAT HQ
+  ------------------------------------------------------------------------------
+  Purpose after login redirect:
+    • Lists existing friendships + pending inbound/outbound requests.
+    • Launches DM overlay + group chat overlays (see bottom of file markup).
+
+  script.js mega-block “8c) FRIENDS PAGE” orchestrates EVERYTHING here:
+    • REST for friends/remove/requests/accept/deny
+    • Group chat CRUD-ish flows under `/api/groupchats` namespace
+    • Optional Socket.IO handshake for realtime refresh stories
+    • Direct messages endpoints `/api/conversations` + `/api/messages`
+
+  Auth: friends-page bootstraps ONLY if `#friends-page` exists AND isLoggedIn().
+
+  Assets: style.css, early-init.js, script.js.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +25,8 @@
 </head>
 <body>
   <script src="early-init.js"></script>
+
+  <!-- SECTION: Navbar -->
   <header class="navbar">
     <div class="container nav-content">
       <h1 class="logo">Live Event</h1>
@@ -31,6 +50,7 @@
     </div>
   </header>
 
+  <!-- SECTION: Friends SPA-like surface (#friends-page anchors JS bootstrap) -->
   <main class="profile-main friends-main" id="friends-page">
     <div class="container profile-layout">
 

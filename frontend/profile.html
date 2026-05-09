@@ -1,3 +1,21 @@
+<!--
+  profile.html — USER PROFILE (+ discovery entry point)
+  ------------------------------------------------------------------------------
+  Purpose:
+    • Public-facing “resume” for logged-in campus users.
+    • “Find people” username search plugs into Friend graph APIs.
+    • Shows RSVP timeline pulled live from Mongo for accountability demos.
+
+  script.js anchors (multiple DOMContentLoaded guards on same URL):
+    • Section 8  — core profile editor (localStorage PROFILE_KEY draft fields,
+                   avatar GET/PUT /api/profile/.../picture, hobby chips)
+    • Section 8b — #user-search-form → GET /api/users/search + friend requests
+    • Section 8d — #rsvped-events-list → GET /api/rsvps/:username
+
+  Narrative cue: Body class `is-editing-profile` flips markup between readonly vs inputs.
+
+  Assets: style.css, early-init.js, script.js.
+-->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,6 +26,8 @@
 </head>
 <body>
   <script src="early-init.js"></script>
+
+  <!-- SECTION: Navbar -->
   <header class="navbar">
     <div class="container nav-content">
       <h1 class="logo">Live Event</h1>
@@ -29,6 +49,7 @@
     </div>
   </header>
 
+  <!-- SECTION: Profile stack — search → hero card → editable cards → RSVP list -->
   <main class="profile-main">
     <div class="container profile-layout">
 
