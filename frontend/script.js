@@ -3288,21 +3288,13 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 
-// ===========================================================================
-// 8b) PROFILE PAGE: user search ("Find people")
-// ---------------------------------------------------------------------------
-// Lets the user type a username on the profile page and see matching public
-// profiles from the backend (GET /api/users/search?username=...).
-// - Calls the backend with fetch().
-// - Builds result cards safely using textContent (so usernames/bios with
-//   special characters like <, &, etc. can never inject HTML).
-// - Shows "No users found" when the API returns an empty array.
-// - Logs and surfaces a friendly message if the request fails.
-// - The button toggles "Send Request" / "Cancel Request": POST
-//   /api/friends/request to send, DELETE /api/friend-requests/cancel to
-//   withdraw a pending request. Outgoing state is mirrored in localStorage
-//   (`liveEventOutgoingFriendRequests`) so the Friends page stays in sync.
-// ===========================================================================
+// ----------------------------------------------------------------------------
+// Friends page UI: “Find people” lives in friends.html (#user-search-form).
+// Runs only when those elements exist — profile has no search markup anymore.
+// GET /api/users/search?username= renders safe text-only cards; POST
+// /api/friends/request + DELETE cancel mirror outbound state via localStorage
+// so outgoing requests + this button stay aligned.
+// ----------------------------------------------------------------------------
 document.addEventListener("DOMContentLoaded", function () {
   const searchForm = document.getElementById("user-search-form");
   const searchInput = document.getElementById("user-search-input");
@@ -3310,7 +3302,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const resultsContainer = document.getElementById("user-search-results");
   const messageEl = document.getElementById("user-search-message");
 
-  // No-op on any page that doesn't have the search UI (events, settings, etc.).
+  // Bail on pages without the markup (everything except friends.html today).
   if (!searchForm || !searchInput || !resultsContainer) return;
 
   const SEARCH_API_URL = "http://localhost:3000/api/users/search";
@@ -3413,8 +3405,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  // Sends DELETE /api/friend-requests/cancel and resets the button to
-  // "Send Request" when the pending row is removed (or already gone).
+  // Sends DELETE cancel; restores the idle “Add Friend” label when undone.
   function cancelFriendRequest(user, button) {
     const me = getCurrentUser();
     const senderUsername =
@@ -3467,7 +3458,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .then(function (result) {
         if (result.ok && result.status === 200) {
           forgetOutgoing(receiverUsername);
-          button.textContent = "Send Request";
+          button.textContent = "Add Friend";
           button.disabled = false;
           setSearchMessage(
             "Friend request to @" + receiverUsername + " canceled.",
@@ -3478,7 +3469,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
         if (result.status === 404) {
           forgetOutgoing(receiverUsername);
-          button.textContent = "Send Request";
+          button.textContent = "Add Friend";
           button.disabled = false;
           setSearchMessage(
             "No pending request found — you can send a new one.",
@@ -3545,7 +3536,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     // In-flight UI: show the request is being sent.
-    const originalText = button.textContent;
+    var originalLabel = button.textContent;
     button.disabled = true;
     button.textContent = "Sending\u2026";
     setSearchMessage("Sending friend request\u2026", "info");
@@ -3617,14 +3608,14 @@ document.addEventListener("DOMContentLoaded", function () {
           // Unknown error — restore the button so the user can retry,
           // and surface the server's message verbatim.
           button.disabled = false;
-          button.textContent = originalText;
+          button.textContent = originalLabel;
           setSearchMessage(serverError, "error");
         }
       })
       .catch(function (error) {
         console.error("POST /api/friends/request failed:", error);
         button.disabled = false;
-        button.textContent = originalText;
+        button.textContent = originalLabel;
         setSearchMessage(
           "Could not reach the server. Please try again later.",
           "error"
@@ -3669,7 +3660,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const addFriendBtn = document.createElement("button");
     addFriendBtn.type = "button";
     addFriendBtn.className = "btn btn-primary user-add-friend-btn";
-    addFriendBtn.textContent = "Send Request";
+    addFriendBtn.textContent = "Add Friend";
 
     // Pre-flight UI hints so the user doesn't have to click to find out:
     //   1. If the result IS the logged-in user, label it "That's you".

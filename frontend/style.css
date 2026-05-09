@@ -2828,8 +2828,8 @@ body.is-editing-profile .profile-display-only {
 
 
 /* ===========================================================================
- * USER SEARCH ("Find people" card on the profile page)
- * Reuses the existing card + button design tokens so it blends in.
+ * USER SEARCH (“Find people” card on friends.html; same utilities as profile cards)
+ * Reuses shared card + button design tokens so it blends in everywhere.
  * ===========================================================================
  */
 .user-search-helper {

@@ -2,6 +2,7 @@
   friends.html — SOCIAL GRAPH + CHAT HQ
   ------------------------------------------------------------------------------
   Purpose after login redirect:
+    • “Find people” search (same IDs as script.js expects) sits above lists.
     • Lists existing friendships + pending inbound/outbound requests.
     • Launches DM overlay + group chat overlays (see bottom of file markup).
 
@@ -66,6 +67,54 @@
           role="status"
           aria-live="polite"
         ></p>
+      </section>
+
+      <!-- Find people: username search → GET /api/users/search + friend-request actions -->
+      <section
+        class="profile-card-block user-search-block"
+        aria-labelledby="user-search-heading"
+      >
+        <h3 id="user-search-heading">Find people</h3>
+        <p class="user-search-helper">
+          Search by username to find other Live Event members.
+        </p>
+
+        <form
+          id="user-search-form"
+          class="user-search-bar"
+          role="search"
+          autocomplete="off"
+        >
+          <label class="visually-hidden" for="user-search-input">
+            Search by username
+          </label>
+          <input
+            type="search"
+            id="user-search-input"
+            class="search-input user-search-input"
+            placeholder="Search by username…"
+          />
+          <button
+            type="submit"
+            id="user-search-btn"
+            class="btn btn-primary user-search-btn"
+          >
+            Search
+          </button>
+        </form>
+
+        <p
+          id="user-search-message"
+          class="user-search-message"
+          role="status"
+          aria-live="polite"
+        ></p>
+
+        <div
+          id="user-search-results"
+          class="user-search-results"
+          aria-live="polite"
+        ></div>
       </section>
 
       <!-- My Friends -->
