@@ -8,7 +8,7 @@
 //       run unconditionally or via tiny DOM guards.
 //   • Page-specific flows (events grid, login form, friends list):
 //       wrapped in DOMContentLoaded + `if (!element) return`.
-//   • Backend communication: REST via fetch("http://localhost:3000/api/...")
+//   • Backend communication: REST via fetch("https://csc131-live-event.onrender.com/api/...")
 //     for real data (events, auth, RSVPs, friends, messages, profile picture).
 //   • Client caching: login session + prefs + draft profile extras live in
 //     localStorage (see AUTH HELPERS keys + PROFILE_KEY notes).
@@ -276,7 +276,7 @@ if (createAccountBtn) {
 // hardcoded array of demo events — those have been removed so the homepage
 // always reflects what's actually in the database.
 //
-// API:  GET http://localhost:3000/api/events  -> JSON array of events
+// API:  GET https://csc131-live-event.onrender.com/api/events  -> JSON array of events
 // Each event object on the backend has:
 //   { id, title, category, date, time, location, description, ... }
 //
@@ -287,7 +287,7 @@ if (createAccountBtn) {
 //   - "Could not load featured events." if the request fails
 //   - "No events match your search." when the homepage filter hides every card
 // ===========================================================================
-const FEATURED_EVENTS_API_URL = "http://localhost:3000/api/events";
+const FEATURED_EVENTS_API_URL = "https://csc131-live-event.onrender.com/api/events";
 
 const featuredEventsContainer = document.getElementById("featured-events");
 const featuredEmptyMessage = document.getElementById("featured-empty");
@@ -572,19 +572,19 @@ document.addEventListener("DOMContentLoaded", function () {
     "outdoor",
   ];
 
-  const EVENTS_API_URL = "http://localhost:3000/api/events";
-  const RSVP_API_URL = "http://localhost:3000/api/rsvp";
+  const EVENTS_API_URL = "https://csc131-live-event.onrender.com/api/events";
+  const RSVP_API_URL = "https://csc131-live-event.onrender.com/api/rsvp";
   // Used to ask the backend "which events has the logged-in user already
   // RSVP'd to?" so we can pre-mark those buttons as green/disabled
   // immediately on page load (instead of resetting them to blue every
   // time the page reloads). See fetchMyRsvpedEventIds() below.
-  const RSVPS_API_URL = "http://localhost:3000/api/rsvps";
+  const RSVPS_API_URL = "https://csc131-live-event.onrender.com/api/rsvps";
   // Used to fetch the attendee count + first 3 profile pictures for each
   // event card's avatar stack. See loadEventAttendees() below.
-  const RSVPS_EVENT_API_URL = "http://localhost:3000/api/rsvps/event";
+  const RSVPS_EVENT_API_URL = "https://csc131-live-event.onrender.com/api/rsvps/event";
   // Event discussion threads — backed by MongoDB (see server.js comments routes).
-  const EVENT_COMMENTS_API_URL = "http://localhost:3000/api/events";
-  const DELETE_COMMENT_API_URL = "http://localhost:3000/api/comments";
+  const EVENT_COMMENTS_API_URL = "https://csc131-live-event.onrender.com/api/events";
+  const DELETE_COMMENT_API_URL = "https://csc131-live-event.onrender.com/api/comments";
   const COMMENT_BODY_MAX_LEN = 2000;
 
   // -------------------------------------------------------------------------
@@ -2369,7 +2369,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const loginMessage = document.getElementById("login-message");
   if (!loginForm || !loginEmail || !loginPassword) return;
 
-  const LOGIN_API_URL = "http://localhost:3000/api/login";
+  const LOGIN_API_URL = "https://csc131-live-event.onrender.com/api/login";
 
   function showMsg(text, type) {
     if (!loginMessage) {
@@ -2481,7 +2481,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return;
   }
 
-  const SIGNUP_API_URL = "http://localhost:3000/api/signup";
+  const SIGNUP_API_URL = "https://csc131-live-event.onrender.com/api/signup";
 
   function showMsg(text, type) {
     if (!signupMessage) {
@@ -2674,7 +2674,7 @@ function getDefaultAvatar(id) {
 }
 
 // Same host as other fetch calls in this file (absolute URL works with file:// opens too).
-var PROFILE_API_URL = "http://localhost:3000/api/profile";
+var PROFILE_API_URL = "https://csc131-live-event.onrender.com/api/profile";
 
 function friendlyFetchErrorMessage(err) {
   var looksNetwork =
@@ -3305,7 +3305,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Bail on pages without the markup (everything except friends.html today).
   if (!searchForm || !searchInput || !resultsContainer) return;
 
-  const SEARCH_API_URL = "http://localhost:3000/api/users/search";
+  const SEARCH_API_URL = "https://csc131-live-event.onrender.com/api/users/search";
 
   function setSearchMessage(text, type) {
     if (!messageEl) return;
@@ -3357,9 +3357,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Friend request helpers
   // -------------------------------------------------------------------------
   // Endpoint that creates a new friend request on the backend.
-  const FRIEND_REQUEST_API_URL = "http://localhost:3000/api/friends/request";
+  const FRIEND_REQUEST_API_URL = "https://csc131-live-event.onrender.com/api/friends/request";
   const FRIEND_REQUEST_CANCEL_API_URL =
-    "http://localhost:3000/api/friend-requests/cancel";
+    "https://csc131-live-event.onrender.com/api/friend-requests/cancel";
 
   // Returns true if we already sent the given user a request earlier (we
   // remember outgoing requests in localStorage so the Friends page can show
@@ -3757,7 +3757,7 @@ document.addEventListener("DOMContentLoaded", function () {
 //   3. Outgoing requests      → mirrored in localStorage (see key below — backend lacks list)
 //
 // Real-time flair (explain if asked): optional Socket.IO client connects to same
-// Express host (`io("http://localhost:3000")`) once username is known — used so
+// Express host (`io("https://csc131-live-event.onrender.com")`) once username is known — used so
 // new messages/group events can propagate without hammering polling everywhere.
 //
 // Lower in this SAME giant listener you'll find:
@@ -3830,7 +3830,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var socket = null;
   if (typeof io === "function") {
-    socket = io("http://localhost:3000");
+    socket = io("https://csc131-live-event.onrender.com");
     socket.on("connect", function () {
       socket.emit("join", myUsername);
       console.log("[socket] connected and joined", {
@@ -3843,12 +3843,12 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  const FRIENDS_API_URL = "http://localhost:3000/api/friends";
-  const REMOVE_FRIEND_API_URL = "http://localhost:3000/api/friends/remove";
-  const REQUESTS_API_URL = "http://localhost:3000/api/friends/requests";
-  const ACCEPT_API_URL = "http://localhost:3000/api/friends/accept";
-  const DENY_API_URL = "http://localhost:3000/api/friends/deny";
-  const GROUP_CHATS_API_URL = "http://localhost:3000/api/groupchats";
+  const FRIENDS_API_URL = "https://csc131-live-event.onrender.com/api/friends";
+  const REMOVE_FRIEND_API_URL = "https://csc131-live-event.onrender.com/api/friends/remove";
+  const REQUESTS_API_URL = "https://csc131-live-event.onrender.com/api/friends/requests";
+  const ACCEPT_API_URL = "https://csc131-live-event.onrender.com/api/friends/accept";
+  const DENY_API_URL = "https://csc131-live-event.onrender.com/api/friends/deny";
+  const GROUP_CHATS_API_URL = "https://csc131-live-event.onrender.com/api/groupchats";
 
   /** Cached friends list for group create / add-member pickers. */
   var friendsListCache = [];
@@ -4999,9 +4999,9 @@ document.addEventListener("DOMContentLoaded", function () {
   //
   // DOM overlay (#chat-overlay) isolates UX from the Friends page grid —
   // closing overlay does not destroy friendship list state.
-  var MESSAGES_API_URL = "http://localhost:3000/api/messages";
-  var CONVERSATIONS_API_URL = "http://localhost:3000/api/conversations";
-  var MESSAGES_READ_API_URL = "http://localhost:3000/api/messages/read";
+  var MESSAGES_API_URL = "https://csc131-live-event.onrender.com/api/messages";
+  var CONVERSATIONS_API_URL = "https://csc131-live-event.onrender.com/api/conversations";
+  var MESSAGES_READ_API_URL = "https://csc131-live-event.onrender.com/api/messages/read";
 
   var conversationsListEl = document.getElementById("conversations-list");
   var chatOverlay = document.getElementById("chat-overlay");
@@ -5402,7 +5402,7 @@ document.addEventListener("DOMContentLoaded", function () {
 //
 // Data flow:
 //   1. Read the logged-in user from localStorage (via getCurrentUser()).
-//   2. Fetch GET http://localhost:3000/api/rsvps/:username.
+//   2. Fetch GET https://csc131-live-event.onrender.com/api/rsvps/:username.
 //   3. Render one row per event (title + date · time · location), or
 //      show "No RSVP'd events yet." for the empty state.
 //
@@ -5415,7 +5415,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const listEl = document.getElementById("rsvped-events-list");
   if (!listEl) return; // Only the profile page has this container.
 
-  const RSVPS_API_URL = "http://localhost:3000/api/rsvps";
+  const RSVPS_API_URL = "https://csc131-live-event.onrender.com/api/rsvps";
 
   // Replace the contents of the list with a single status paragraph
   // (used for "Loading…", "No RSVP'd events yet.", login-required, and
@@ -5652,9 +5652,9 @@ const confirmPasswordInput = document.getElementById("confirm-password");
 const passwordMessage = document.getElementById("password-message");
 
 const CHANGE_PASSWORD_API_URL =
-  "http://localhost:3000/api/settings/change-password";
+  "https://csc131-live-event.onrender.com/api/settings/change-password";
 const DELETE_ACCOUNT_API_URL =
-  "http://localhost:3000/api/settings/delete-account";
+  "https://csc131-live-event.onrender.com/api/settings/delete-account";
 
 function showSettingsMessage(element, message, type) {
   if (!element) return;
@@ -5790,8 +5790,8 @@ const adminKeyMessage = document.getElementById("admin-key-message");
 const adminStatusPanel = document.getElementById("admin-status-panel");
 const exitAdminBtn = document.getElementById("exit-admin-btn");
 
-const ADMIN_KEY_API_URL = "http://localhost:3000/api/settings/admin-key";
-const EXIT_ADMIN_API_URL = "http://localhost:3000/api/settings/exit-admin";
+const ADMIN_KEY_API_URL = "https://csc131-live-event.onrender.com/api/settings/admin-key";
+const EXIT_ADMIN_API_URL = "https://csc131-live-event.onrender.com/api/settings/exit-admin";
 
 // Show the right panel (active vs unlock form) based on the current role.
 // Called once on page load and again after every successful action so the
@@ -6194,7 +6194,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let pendingEventImageBase64 = "";
 
-  const ADD_EVENT_API_URL = "http://localhost:3000/api/events";
+  const ADD_EVENT_API_URL = "https://csc131-live-event.onrender.com/api/events";
 
   // Tiny helper that mirrors the signup/login pages: writes the message
   // text and applies the matching color class (green for success, red for
