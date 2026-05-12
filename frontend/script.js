@@ -4332,6 +4332,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Create → POST /api/groupchats, listMine → GET with username in path,
   // Routes build on GROUP_CHATS_API_URL (constant below; points at `/api/groupchats`).
   // UI shells: group-create-* panel toggles visibility; overlays handle reading.
+  var groupsWithNew = new Set();
   const groupChatsListEl = document.getElementById("group-chats-list");
   const groupCreatePanel = document.getElementById("group-create-panel");
   const groupCreateToggleBtn = document.getElementById("group-create-toggle-btn");
@@ -4730,6 +4731,18 @@ document.addEventListener("DOMContentLoaded", function () {
   function openGroupChat(chat) {
     if (!groupChatOverlay || !chat || !chat.id) return;
     closeChat();
+
+    var gid = String(chat.id);
+    groupsWithNew.delete(gid);
+    if (groupChatsListEl) {
+      var sel = '.group-chat-card[data-group-id="' + gid.replace(/"/g, '\\"') + '"]';
+      var card = groupChatsListEl.querySelector(sel);
+      if (card) {
+        var badge = card.querySelector(".convo-unread-badge");
+        if (badge) badge.remove();
+      }
+    }
+
     activeGroupChat = {
       id: String(chat.id),
       name: chat.name || "Group",
@@ -5403,16 +5416,51 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function handleIncomingGroupMessage(message) {
-    if (!message || !activeGroupChat) return;
+    if (!message) return;
     var incomingGroupId = String(message.groupChatId || "");
-    if (incomingGroupId === String(activeGroupChat.id)) {
+
+    if (activeGroupChat && incomingGroupId === String(activeGroupChat.id)) {
       appendGroupChatMessageBubble(message);
+      return;
+    }
+
+    if (!incomingGroupId) return;
+    groupsWithNew.add(incomingGroupId);
+    if (!groupChatsListEl) return;
+    var selector =
+      '.group-chat-card[data-group-id="' +
+      incomingGroupId.replace(/"/g, '\\"') + '"]';
+    var card = groupChatsListEl.querySelector(selector);
+    if (card && !card.querySelector(".convo-unread-badge")) {
+      var badge = document.createElement("span");
+      badge.className = "convo-unread-badge";
+      badge.textContent = "New";
+      card.appendChild(badge);
     }
   }
 
   if (socket) {
     socket.on("newMessage", handleIncomingDirectMessage);
     socket.on("newGroupMessage", handleIncomingGroupMessage);
+    socket.on("groupMemberChange", function (payload) {
+      if (!payload || !activeGroupChat) return;
+      if (String(payload.groupChatId) !== String(activeGroupChat.id)) return;
+
+      if (groupChatMessagesEl) {
+        var emptyState = groupChatMessagesEl.querySelector(".chat-empty");
+        if (emptyState) emptyState.remove();
+
+        var bubble = document.createElement("div");
+        bubble.className = "chat-bubble chat-bubble--system";
+        var action = payload.type === "join" ? "joined" : "left";
+        bubble.textContent =
+          "@" + (payload.username || "someone") + " " + action + " the group";
+        groupChatMessagesEl.appendChild(bubble);
+        groupChatMessagesEl.scrollTop = groupChatMessagesEl.scrollHeight;
+      }
+
+      refreshActiveGroupChatDetails();
+    });
   }
 
   // -------------------------------------------------------------------------

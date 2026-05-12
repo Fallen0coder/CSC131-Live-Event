@@ -2288,6 +2288,13 @@ app.delete("/api/groupchats/:id/members", async (req, res) => {
     }
 
     await GroupChat.updateOne({ _id: id }, { $pull: { members: username } });
+
+    io.to(groupRoom(id)).emit("groupMemberChange", {
+      groupChatId: id,
+      type: "leave",
+      username: username,
+    });
+
     const updated = await GroupChat.findById(id).lean();
 
     res.status(200).json({
@@ -2338,6 +2345,12 @@ app.post("/api/groupchats/:id/members", async (req, res) => {
     }
 
     await GroupChat.updateOne({ _id: id }, { $addToSet: { members: username } });
+
+    io.to(groupRoom(id)).emit("groupMemberChange", {
+      groupChatId: id,
+      type: "join",
+      username: username,
+    });
 
     const updated = await GroupChat.findById(id).lean();
     res.status(201).json({

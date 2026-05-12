@@ -3540,6 +3540,22 @@ body.is-editing-profile .profile-display-only {
   color: var(--color-muted, #6b7280);
 }
 
+.chat-bubble--system {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--color-muted, #888);
+  background: transparent;
+  padding: 0.5rem;
+  align-self: center;
+  font-style: italic;
+  max-width: 100%;
+  border-radius: 0;
+}
+
+.theme-dark .chat-bubble--system {
+  color: var(--color-muted, #9ca3af);
+}
+
 /* -- Responsive ----------------------------------------------------------- */
 @media (max-width: 540px) {
   .chat-window {
