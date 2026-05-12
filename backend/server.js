@@ -1,8 +1,15 @@
 require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 
 // Node.js + Express backend for the Live Event project.
-// Persistent storage backed by MongoDB via Mongoose.
-
+// Persistent storage: MongoDB through Mongoose (schemas live in backend/models/).
+//
+// Big picture:
+// - REST endpoints below answer `fetch(...)` calls from the static/frontend bundle.
+// - Passwords stay hashed server-side (`bcrypt`); login/signup routes return trimmed user JSON,
+//   and the frontend often caches that JSON in localStorage — but edits/deletes still re-hit the DB
+//   using username/email fields in the POST body instead of blindly trusting UI state.
+// - Socket.IO attaches to the same HTTP server below for instant DMs/group messages (`newMessage`, etc.).
+//
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -21,6 +28,11 @@ const Message = require("./models/Message");
 const GroupChat = require("./models/GroupChat");
 const GroupChatMessage = require("./models/GroupChatMessage");
 
+// =========================
+// APP + SHARED HTTP SERVER
+// =========================
+// Express serves JSON APIs only in this codebase (no SPA static-from-same-server here).
+// `http.Server` wraps Express so Socket.IO can upgrade browsers to realtime channels on the same port.
 const app = express();
 const httpServer = http.createServer(app);
 const io = new Server(httpServer, {
@@ -32,14 +44,28 @@ const io = new Server(httpServer, {
 const PORT = Number(process.env.PORT) || 3000;
 const MONGO_URI = process.env.MONGO_URI;
 
+// Socket.IO helper: receivers join rooms named exactly `user:<lowercaseUsername>`.
 function userRoom(usernameLower) {
   return "user:" + usernameLower;
 }
 
+// Socket.IO helper: broadcasts land in rooms named `group:<mongoId>` after clients emit `join-group`.
 function groupRoom(groupId) {
   return "group:" + String(groupId);
 }
 
+// =========================
+// SOCKET.IO (REALTIME CHAT NOTIFY)
+// =========================
+// What: Opens long-lived websocket connections alongside REST.
+// Why: Immediate UI updates instead of polling GET /messages every second.
+//
+// Frontend contract (matches script.js):
+// - Direct messages: POST /api/messages saves Mongo first, then emits `newMessage`
+//   to Socket.IO room `user:<receiverLowercaseUsername>` if that client ran `socket.emit("join", username)` (or handshake `?username=`).
+// - Group chat: browsers call `socket.emit("join-group", groupId)`; POST /groupchats/:id/messages emits
+//   `newGroupMessage`, member add/remove emits `groupMemberChange`.
+//
 io.on("connection", (socket) => {
   console.log("[socket] client connected:", socket.id);
   // Optional handshake join: io(".../?username=alice")
@@ -54,7 +80,7 @@ io.on("connection", (socket) => {
     );
   }
 
-  // Frontend contract requested by user:
+  // Frontend emits "join" with the logged-in username so this socket receives `newMessage` for that inbox.
   socket.on("join", (username) => {
     const normalized = normalizeUsername(username);
     if (!normalized) return;
@@ -84,7 +110,7 @@ io.on("connection", (socket) => {
     );
   });
 
-  // Optional group room joins for real-time group messages.
+  // Frontend: entering a group thread view should emit this once so `newGroupMessage` events arrive live.
   socket.on("join-group", (groupId) => {
     if (!groupId) return;
     socket.join(groupRoom(groupId));
@@ -103,6 +129,12 @@ io.on("connection", (socket) => {
   });
 });
 
+// =========================
+// CORE EXPRESS MIDDLEWARE
+// =========================
+// cors(): allows the frontend dev server (often another localhost port) to call this API.
+// express.json({ limit }): parses JSON POST bodies — large limit so Base64 avatars survive (PUT /picture).
+//
 app.use(cors());
 // We allow a generous JSON body size because the profile picture route
 // (PUT /api/profile/:username/picture) accepts Base64 image strings,
@@ -111,9 +143,11 @@ app.use(cors());
 // to 10mb to comfortably fit a few-MB image.
 app.use(express.json({ limit: "10mb" }));
 
-// ---------------------------------------------------------------------------
-// MongoDB connection
-// ---------------------------------------------------------------------------
+// =========================
+// DATABASE: CONNECT TO MONGODB
+// =========================
+// Start-up guard: refuses to boot without backend/.env + MONGO_URI so we never silently run stateless RAM-only.
+//
 if (!MONGO_URI) {
   const envPath = path.join(__dirname, ".env");
   console.error("MONGO_URI is not set.");
@@ -147,8 +181,7 @@ mongoose
     process.exit(1);
   });
 
-// Seed a handful of sample events on first run so GET /api/events isn't empty.
-// Only inserts when the events collection has no documents.
+// Convenience seed for empty demo DB — GET /api/events always returns something usable on stage / first boot.
 async function seedEvents() {
   try {
     const count = await Event.estimatedDocumentCount();
@@ -191,9 +224,10 @@ async function seedEvents() {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Routes
-// ---------------------------------------------------------------------------
+// =========================
+// EVENTS API (+ helper to shape responses)
+// =========================
+// These routes drive the homepage/event feed UI (`GET`, `POST`); edit/delete endpoints appear later behind auth checks.
 
 // Shape a Mongo event document (lean or hydrated) into the JSON the
 // frontend always expects — including explicit eventImage/eventImageType
@@ -320,9 +354,11 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Event comments (MongoDB-backed)
-// ---------------------------------------------------------------------------
+// =========================
+// EVENT COMMENTS API
+// =========================
+// Frontend: threaded discussion beneath each card — GET loads history, POST requires a logged-in user id via username/email lookup.
+//
 // GET  /api/events/:id/comments — list comments for one event (newest first).
 // POST /api/events/:id/comments — add a comment (requires a real user).
 // DELETE /api/comments/:commentId — author or admin only (403 otherwise).
@@ -489,9 +525,9 @@ app.delete("/api/comments/:commentId", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Event ownership / permission helpers
-// ---------------------------------------------------------------------------
+// =========================
+// EVENT OWNERSHIP HELPERS (+ PUT / DELETE EVENT)
+// =========================
 // Both PUT and DELETE on /api/events/:id share the same auth flow:
 //   1. Look up the requester by username (or email) in MongoDB.
 //   2. Re-read their actual role from the DB — we NEVER trust a `role`
@@ -659,6 +695,12 @@ app.delete("/api/events/:id", async (req, res) => {
   }
 });
 
+// =========================
+// AUTH — SIGN UP NEW USER ACCOUNTS
+// =========================
+// Frontend registration form POSTs `{ name, username, email, password }`; response echoes `safeUser`
+// JSON (never the hash) — same shape often cached in localStorage for instant UI personalization.
+
 // POST /api/signup
 // Registers a new user. Expects JSON body: { name, username, email, password }.
 // - Hashes the password with bcrypt.
@@ -731,6 +773,10 @@ app.post("/api/signup", async (req, res) => {
     res.status(500).json({ error: "Signup failed." });
   }
 });
+
+// =========================
+// USER DISCOVERY + PUBLIC PROFILE PAGES (`/api/users/...`)
+// =========================
 
 // GET /api/users/search?username=...
 // Case-insensitive, partial username search.
@@ -813,9 +859,9 @@ app.get("/api/users/:username", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Profile routes
-// ---------------------------------------------------------------------------
+// =========================
+// PROFILE API (`/api/profile/...`)
+// =========================
 // These routes let the frontend fetch and update a user's public profile
 // data — most importantly their profile picture, which is stored
 // permanently in MongoDB so it survives logouts and device switches.
@@ -985,9 +1031,9 @@ app.put("/api/profile/:username/details", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Friend request helpers
-// ---------------------------------------------------------------------------
+// =========================
+// SHARED USERNAME HELPERS (friends, messages, search, profiles)
+// =========================
 // All friend routes work with usernames. To keep checks case-insensitive
 // (so "Alice" == "alice"), we always trim and lowercase before doing any
 // comparison or storing anything in the database.
@@ -1029,9 +1075,9 @@ function publicProfile(user) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Friend routes
-// ---------------------------------------------------------------------------
+// =========================
+// FRIENDS SYSTEM (requests + list + unfriend)
+// =========================
 
 // POST /api/friends/request
 // Body: { senderUsername, receiverUsername }
@@ -1408,6 +1454,14 @@ app.delete("/api/friends/remove", async (req, res) => {
   }
 });
 
+// =========================
+// LOGIN (SESSION DATA FOR FRONTEND + DB READ)
+// =========================
+//
+// Stateless API: issuing no server cookie/JWT means the SPA keeps whichever user blob it prefers.
+// Subsequent “who am I?” calls still pass username/email in bodies so routes can Mongo-lookup securely.
+//
+
 // POST /api/login
 // Logs a user in. Expects JSON body: { email, password }.
 // Compares the provided password against the stored bcrypt hash.
@@ -1440,6 +1494,11 @@ app.post("/api/login", async (req, res) => {
     res.status(500).json({ error: "Login failed." });
   }
 });
+
+// =========================
+// RSVP API (model: backend/models/RSVP.js)
+// =========================
+// Links Mongo User `_id` ↔ Event `_id`. Frontend sends both strings after signup stores `user.id`.
 
 // POST /api/rsvp
 // Records an RSVP. Expects JSON body: { userId, eventId } as ObjectId strings.
@@ -1641,9 +1700,9 @@ app.get("/api/rsvps/:username", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Account settings routes
-// ---------------------------------------------------------------------------
+// =========================
+// SETTINGS & ACCOUNT ADMIN API
+// =========================
 // These routes are called from the Settings page on the frontend. They
 // always work against the live MongoDB user (not localStorage), and they
 // always use bcrypt to verify any password the user types in.
@@ -1750,9 +1809,9 @@ app.post("/api/settings/change-password", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Admin key routes
-// ---------------------------------------------------------------------------
+// =========================
+// ADMIN UNLOCK (SECRET KEY IN .ENV ONLY)
+// =========================
 // The admin key itself lives in backend/.env as ADMIN_KEY. The frontend
 // only ever sends the key the user typed — it never knows the real value.
 // We compare the typed key to process.env.ADMIN_KEY here, on the server,
@@ -1929,9 +1988,9 @@ app.delete("/api/settings/delete-account", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Messaging routes
-// ---------------------------------------------------------------------------
+// =========================
+// DIRECT MESSAGES (Mongo + Socket fallback)
+// =========================
 
 // POST /api/messages
 // Sends a direct message from one user to another.
@@ -2204,9 +2263,9 @@ app.patch("/api/messages/read", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Group chat routes
-// ---------------------------------------------------------------------------
+// =========================
+// GROUP CHATS (MULTI-PARTY ROOMS + SOCKET BROADCAST)
+// =========================
 
 // POST /api/groupchats
 // Body: { name, creatorUsername, members }
@@ -2540,9 +2599,9 @@ app.post("/api/groupchats/:id/members", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Start the server
-// ---------------------------------------------------------------------------
+// =========================
+// BOOT: LISTEN FOR HTTP + WEBSOCKET UPGRADES
+// =========================
 httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });

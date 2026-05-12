@@ -1,8 +1,20 @@
 const mongoose = require("mongoose");
 
-// One message inside a group chat thread (separate collection so the
-// GroupChat document stays small).
+// =========================
+// GROUP CHAT MESSAGE MODEL (one line in the thread)
+// =========================
+// Each document is one text message INSIDE one group (`groupChatId` → GroupChat `_id`).
+// Kept separate from GroupChat so the room document stays small as history grows long.
+//
+// Frontend connection:
+//   - POST /api/groupchats/:id/messages appends text after membership check; server emits Socket.IO
+//     event `newGroupMessage` to room `group:<id>` so other members see it instantly.
+//   - GET /api/groupchats/:id/messages returns chronological history after page reload.
+//
+// Permissions: Sending is checked in Express (must be on group.members[]); Mongo only stores facts.
+
 const groupChatMessageSchema = new mongoose.Schema({
+  // FK-style link to GroupChat `_id`; used in queries "all messages for this group".
   groupChatId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "GroupChat",
@@ -30,6 +42,7 @@ const groupChatMessageSchema = new mongoose.Schema({
   },
 });
 
+// Speeds “load timeline for group X ordered oldest→newest” (see GET …/messages).
 groupChatMessageSchema.index({ groupChatId: 1, createdAt: 1 });
 
 groupChatMessageSchema.set("toJSON", {

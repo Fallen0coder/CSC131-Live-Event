@@ -1,6 +1,16 @@
 const mongoose = require("mongoose");
 
-// User model
+// =========================
+// USER MODEL (accounts + profiles + friendships)
+// =========================
+// Backend source-of-truth for login, profile edits, RSVPs (by user `_id`),
+// friend graphs, messaging participants, etc.
+//
+// Frontend: Signup/login get a sanitized user (`safeUser` / `publicProfile`) without the password hash.
+// Browsers typically cache the logged-in object in localStorage for UI — but admins/owners are
+// still re-checked in Mongo (`role`, `creatorUsername`, etc.) before sensitive actions succeed.
+//
+// User model (field-level notes below)
 // ---------------------------------------------------------------------------
 // Beginner notes:
 // - `username` keeps the casing the user typed (e.g. "AliceDemo"), but is

@@ -1,7 +1,11 @@
 const mongoose = require("mongoose");
 
-// FriendRequest model
-// ---------------------------------------------------------------------------
+// =========================
+// FRIEND REQUEST MODEL (invite workflow)
+// =========================
+// Frontend flows: POST /api/friends/request creates `pending`; GET /incoming list uses receiver;
+// POST /api/friends/accept|deny update status; User.friends arrays are updated only on accept in server.js.
+//
 // Tracks one user asking another to be their friend.
 //
 // Beginner notes:

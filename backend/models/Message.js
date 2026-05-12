@@ -1,7 +1,11 @@
 const mongoose = require("mongoose");
 
-// Message model
-// ---------------------------------------------------------------------------
+// =========================
+// MESSAGE MODEL (1:1 direct messages between friends)
+// =========================
+// Persisted inbox/history plus `read` flag for unread badges. After POST /api/messages saves a row,
+// server.js emits Socket.IO event `newMessage` to receiver’s `user:<lowercase>` room so the UI updates live.
+//
 // Stores one direct message from one user to another.
 //
 // Both usernames are stored in lowercase (same convention as FriendRequest
