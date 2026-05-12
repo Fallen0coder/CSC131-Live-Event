@@ -4356,6 +4356,87 @@ document.addEventListener("DOMContentLoaded", function () {
   const groupChatAddMemberRow = document.getElementById("group-chat-add-member-row");
   const groupChatAddMemberInput = document.getElementById("group-chat-add-member-input");
   const groupChatAddMemberConfirm = document.getElementById("group-chat-add-member-confirm");
+  const groupChatAddMemberSuggestions = document.getElementById("group-chat-add-member-suggestions");
+
+  var addMemberSearchTimer = null;
+
+  function hideAddMemberSuggestions() {
+    if (groupChatAddMemberSuggestions) {
+      groupChatAddMemberSuggestions.innerHTML = "";
+      groupChatAddMemberSuggestions.classList.add("is-hidden");
+    }
+  }
+
+  function runAddMemberSearch(query) {
+    if (!groupChatAddMemberSuggestions) return;
+    if (query.length < 1) {
+      hideAddMemberSuggestions();
+      return;
+    }
+
+    var url =
+      "https://csc131-live-event.onrender.com/api/users/search?username=" +
+      encodeURIComponent(query);
+
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (users) {
+        if (!Array.isArray(users) || users.length === 0) {
+          hideAddMemberSuggestions();
+          return;
+        }
+
+        var currentMembers = activeGroupChat
+          ? (activeGroupChat.members || [])
+          : [];
+
+        var filtered = users.filter(function (u) {
+          var lower = String(u.username || "").toLowerCase();
+          return !currentMembers.includes(lower);
+        });
+
+        if (filtered.length === 0) {
+          hideAddMemberSuggestions();
+          return;
+        }
+
+        groupChatAddMemberSuggestions.innerHTML = "";
+        filtered.forEach(function (u) {
+          var li = document.createElement("li");
+          li.className = "add-member-suggestion-item";
+          li.textContent = "@" + (u.username || "");
+          li.addEventListener("click", function () {
+            if (groupChatAddMemberInput) {
+              groupChatAddMemberInput.value = u.username || "";
+            }
+            hideAddMemberSuggestions();
+          });
+          groupChatAddMemberSuggestions.appendChild(li);
+        });
+        groupChatAddMemberSuggestions.classList.remove("is-hidden");
+      })
+      .catch(function () {
+        hideAddMemberSuggestions();
+      });
+  }
+
+  if (groupChatAddMemberInput) {
+    groupChatAddMemberInput.addEventListener("input", function () {
+      var val = String(groupChatAddMemberInput.value || "").trim();
+      clearTimeout(addMemberSearchTimer);
+      if (val.length < 1) {
+        hideAddMemberSuggestions();
+        return;
+      }
+      addMemberSearchTimer = setTimeout(function () {
+        runAddMemberSearch(val);
+      }, 300);
+    });
+
+    groupChatAddMemberInput.addEventListener("blur", function () {
+      setTimeout(hideAddMemberSuggestions, 200);
+    });
+  }
 
   /** @type {{ id: string, name: string, creatorUsername: string, members: string[] } | null} */
   var activeGroupChat = null;
@@ -4958,6 +5039,7 @@ document.addEventListener("DOMContentLoaded", function () {
             if (groupChatAddMemberInput) {
               groupChatAddMemberInput.value = "";
             }
+            hideAddMemberSuggestions();
             renderGroupChatMembers(activeGroupChat.members);
             refreshActiveGroupChatDetails();
             loadGroupChats();
@@ -5443,8 +5525,18 @@ document.addEventListener("DOMContentLoaded", function () {
     socket.on("newMessage", handleIncomingDirectMessage);
     socket.on("newGroupMessage", handleIncomingGroupMessage);
     socket.on("groupMemberChange", function (payload) {
-      if (!payload || !activeGroupChat) return;
-      if (String(payload.groupChatId) !== String(activeGroupChat.id)) return;
+      console.log("[socket] received groupMemberChange", payload);
+      if (!payload) return;
+
+      if (!activeGroupChat) {
+        console.log("[socket] groupMemberChange ignored — no active group chat open");
+        return;
+      }
+      if (String(payload.groupChatId) !== String(activeGroupChat.id)) {
+        console.log("[socket] groupMemberChange ignored — different group",
+          { incoming: payload.groupChatId, active: activeGroupChat.id });
+        return;
+      }
 
       if (groupChatMessagesEl) {
         var emptyState = groupChatMessagesEl.querySelector(".chat-empty");

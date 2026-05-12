@@ -2289,11 +2289,13 @@ app.delete("/api/groupchats/:id/members", async (req, res) => {
 
     await GroupChat.updateOne({ _id: id }, { $pull: { members: username } });
 
-    io.to(groupRoom(id)).emit("groupMemberChange", {
-      groupChatId: id,
+    const leavePayload = {
+      groupChatId: String(id),
       type: "leave",
       username: username,
-    });
+    };
+    io.to(groupRoom(id)).emit("groupMemberChange", leavePayload);
+    console.log("[socket] emitted groupMemberChange", { room: groupRoom(id), payload: leavePayload });
 
     const updated = await GroupChat.findById(id).lean();
 
@@ -2346,11 +2348,13 @@ app.post("/api/groupchats/:id/members", async (req, res) => {
 
     await GroupChat.updateOne({ _id: id }, { $addToSet: { members: username } });
 
-    io.to(groupRoom(id)).emit("groupMemberChange", {
-      groupChatId: id,
+    const joinPayload = {
+      groupChatId: String(id),
       type: "join",
       username: username,
-    });
+    };
+    io.to(groupRoom(id)).emit("groupMemberChange", joinPayload);
+    console.log("[socket] emitted groupMemberChange", { room: groupRoom(id), payload: joinPayload });
 
     const updated = await GroupChat.findById(id).lean();
     res.status(201).json({

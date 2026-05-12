@@ -267,15 +267,19 @@
         </div>
         <div id="group-chat-add-member-row" class="group-chat-add-member-row is-hidden">
           <label class="visually-hidden" for="group-chat-add-member-input">
-            Enter a friend's username
+            Search for a user to add
           </label>
-          <input
-            type="text"
-            id="group-chat-add-member-input"
-            class="group-chat-add-member-input"
-            placeholder="friend username"
-            maxlength="60"
-          />
+          <div class="add-member-search-wrap">
+            <input
+              type="text"
+              id="group-chat-add-member-input"
+              class="group-chat-add-member-input"
+              placeholder="Search username…"
+              maxlength="60"
+              autocomplete="off"
+            />
+            <ul id="group-chat-add-member-suggestions" class="add-member-suggestions is-hidden"></ul>
+          </div>
           <button
             type="button"
             id="group-chat-add-member-confirm"
