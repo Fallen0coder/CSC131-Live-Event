@@ -8,7 +8,7 @@
 //       run unconditionally or via tiny DOM guards.
 //   • Page-specific flows (events grid, login form, friends list):
 //       wrapped in DOMContentLoaded + `if (!element) return`.
-//   • Backend communication: REST via fetch("https://csc131-live-event.onrender.com/api/...")
+//   • Backend communication: REST via fetch(LIVE_EVENT_API_BASE + "/...")
 //     for real data (events, auth, RSVPs, friends, messages, profile picture).
 //   • Client caching: login session + prefs + draft profile extras live in
 //     localStorage (see AUTH HELPERS keys + PROFILE_KEY notes).
@@ -103,6 +103,93 @@ function applyA11ySettings() {
   );
 }
 applyA11ySettings();
+
+// ---------------------------------------------------------------------------
+// API + Socket base URL
+// ---------------------------------------------------------------------------
+// Live Server / file:// must call Express on http://localhost:3000.
+// When the HTML is served from the same host as Express (:3000), use that origin.
+// ---------------------------------------------------------------------------
+var LIVE_EVENT_API_ORIGIN = (function () {
+  if (typeof window === "undefined") {
+    return "https://csc131-live-event.onrender.com";
+  }
+  try {
+    if (window.location.protocol === "file:") {
+      return "http://localhost:3000";
+    }
+    var h = window.location.hostname;
+    if (h === "localhost" || h === "127.0.0.1") {
+      if (String(window.location.port) === "3000") {
+        return window.location.origin;
+      }
+      return "http://localhost:3000";
+    }
+  } catch (e) {
+    /* ignore */
+  }
+  return "https://csc131-live-event.onrender.com";
+})();
+
+/** Prefix for every REST path, e.g. GET /events → LIVE_EVENT_API_BASE + "/events" */
+var LIVE_EVENT_API_BASE = LIVE_EVENT_API_ORIGIN + "/api";
+
+/**
+ * fetch() + read body as text; parse JSON only when Content-Type or body looks like JSON.
+ * Throws with message "Profile route not found. Check backend API." if the body is HTML.
+ */
+function fetchLiveEventJson(url, logContext) {
+  var ctx = logContext || "fetch";
+  return fetch(url).then(function (resp) {
+    return resp.text().then(function (text) {
+      var ct = (resp.headers.get("content-type") || "").toLowerCase();
+      var trimmed = (text || "").trim();
+      var looksHtml =
+        trimmed.indexOf("<!DOCTYPE") === 0 ||
+        trimmed.indexOf("<html") === 0 ||
+        ct.indexOf("text/html") !== -1;
+      if (looksHtml) {
+        console.error(
+          "[" + ctx + "] Expected JSON but received HTML",
+          resp.status,
+          resp.url,
+          trimmed.slice(0, 400)
+        );
+        var htmlErr = new Error(
+          "Profile route not found. Check backend API."
+        );
+        htmlErr.isHtmlResponse = true;
+        throw htmlErr;
+      }
+      var data = null;
+      if (trimmed !== "") {
+        var jsonLike =
+          ct.indexOf("application/json") !== -1  ||
+          ct.indexOf("+json") !== -1 ||
+          trimmed.charAt(0) === "{" ||
+          trimmed.charAt(0) === "[";
+        if (jsonLike) {
+          try {
+            data = JSON.parse(text);
+          } catch (parseErr) {
+            console.error(
+              "[" + ctx + "] JSON.parse failed",
+              parseErr,
+              trimmed.slice(0, 400)
+            );
+            throw parseErr;
+          }
+        } else {
+          console.error("[" + ctx + "] Non-JSON body", ct, trimmed.slice(0, 200));
+          var badErr = new Error("Invalid response from server.");
+          badErr.isNonJsonBody = true;
+          throw badErr;
+        }
+      }
+      return { ok: resp.ok, status: resp.status, data: data };
+    });
+  });
+}
 
 
 // ---------------------------------------------------------------------------
@@ -296,7 +383,7 @@ if (createAccountBtn) {
 //   - "Could not load featured events." if the request fails
 //   - "No events match your search." when the homepage filter hides every card
 // ===========================================================================
-const FEATURED_EVENTS_API_URL = "https://csc131-live-event.onrender.com/api/events";
+const FEATURED_EVENTS_API_URL = LIVE_EVENT_API_BASE + "/events";
 
 const featuredEventsContainer = document.getElementById("featured-events");
 const featuredEmptyMessage = document.getElementById("featured-empty");
@@ -581,19 +668,19 @@ document.addEventListener("DOMContentLoaded", function () {
     "outdoor",
   ];
 
-  const EVENTS_API_URL = "https://csc131-live-event.onrender.com/api/events";
-  const RSVP_API_URL = "https://csc131-live-event.onrender.com/api/rsvp";
+  const EVENTS_API_URL = LIVE_EVENT_API_BASE + "/events";
+  const RSVP_API_URL = LIVE_EVENT_API_BASE + "/rsvp";
   // Used to ask the backend "which events has the logged-in user already
   // RSVP'd to?" so we can pre-mark those buttons as green/disabled
   // immediately on page load (instead of resetting them to blue every
   // time the page reloads). See fetchMyRsvpedEventIds() below.
-  const RSVPS_API_URL = "https://csc131-live-event.onrender.com/api/rsvps";
+  const RSVPS_API_URL = LIVE_EVENT_API_BASE + "/rsvps";
   // Used to fetch the attendee count + first 3 profile pictures for each
   // event card's avatar stack. See loadEventAttendees() below.
-  const RSVPS_EVENT_API_URL = "https://csc131-live-event.onrender.com/api/rsvps/event";
+  const RSVPS_EVENT_API_URL = LIVE_EVENT_API_BASE + "/rsvps/event";
   // Event discussion threads — backed by MongoDB (see server.js comments routes).
-  const EVENT_COMMENTS_API_URL = "https://csc131-live-event.onrender.com/api/events";
-  const DELETE_COMMENT_API_URL = "https://csc131-live-event.onrender.com/api/comments";
+  const EVENT_COMMENTS_API_URL = LIVE_EVENT_API_BASE + "/events";
+  const DELETE_COMMENT_API_URL = LIVE_EVENT_API_BASE + "/comments";
   const COMMENT_BODY_MAX_LEN = 2000;
 
   // -------------------------------------------------------------------------
@@ -921,8 +1008,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // we render its button in the "RSVP'd" green/disabled state right away
   // so it stays green across page reloads. Defaults to an empty Set so
   // older callers/tests that don't pass it still work.
-  // Fallback solid colours for avatar dots when a user has no uploaded photo.
-  // Indexed by avatar position so the colour is stable across renders.
+  // Fallback solid colours (legacy; attendee stack now uses photos / emoji / initials).
   var AVATAR_COLORS = ["#a78bfa", "#34d399", "#fb923c"];
 
   // Returns true when the string looks like a safe data-URL image we can
@@ -943,22 +1029,59 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
 
+    var maxDots = Math.min(3, attendees.length);
     var stackHtml = "<div class='event-avatar-stack'>";
-    for (var i = 0; i < attendees.length; i++) {
+    for (var i = 0; i < maxDots; i++) {
       var a = attendees[i];
-      var style = "";
+      var uname = a && a.username ? String(a.username).trim() : "";
+      var href = uname ? getPublicProfilePageUrl(uname).replace(/'/g, "%27") : "#";
+      var titleAttr = uname
+        ? " title='" + escapeHtmlPublic("@" + uname).replace(/'/g, "&#39;") + "'"
+        : "";
+      var inner = "";
       if (
         a &&
         a.profilePictureType === "uploaded" &&
         isSafeDataUrl(a.profilePicture)
       ) {
-        var escaped = a.profilePicture.replace(/'/g, "%27");
-        style =
-          "background-image:url('" + escaped + "');";
-      } else {
-        style = "background-color:" + (AVATAR_COLORS[i] || "#a78bfa") + ";";
+        var escapedPic = a.profilePicture.replace(/'/g, "%27");
+        inner =
+          "<img class='event-avatar-img' src='" +
+          escapedPic +
+          "' alt='' />";
+      } else if (
+        a &&
+        a.profilePictureType === "default" &&
+        a.profilePicture &&
+        typeof getDefaultAvatar === "function"
+      ) {
+        var defAv = getDefaultAvatar(a.profilePicture);
+        if (defAv) {
+          inner =
+            "<span class='event-avatar-emoji' aria-hidden='true'>" +
+            defAv.emoji +
+            "</span>";
+        }
       }
-      stackHtml += "<div class='event-avatar' style='" + style + "'></div>";
+      if (!inner) {
+        inner =
+          "<span class='event-avatar-initial'>" +
+          escapeHtmlPublic(
+            navProfileInitialLetter({
+              username: uname,
+              displayName: a && a.displayName,
+            })
+          ) +
+          "</span>";
+      }
+      stackHtml +=
+        "<a class='event-avatar event-avatar--link' href='" +
+        href +
+        "'" +
+        titleAttr +
+        ">" +
+        inner +
+        "</a>";
     }
     stackHtml += "</div>";
 
@@ -1071,10 +1194,18 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     if (safeCreator) {
+      var creatorHref = getPublicProfilePageUrl(event.creatorUsername || "").replace(
+        /'/g,
+        "%27"
+      );
       html +=
         "<p class='event-creator'>" +
           "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDC64</span>" +
-          "<span>Created by <strong>@" + safeCreator + "</strong></span>" +
+          "<span>Created by <strong><a class='event-creator-link' href='" +
+          creatorHref +
+          "'>@" +
+          safeCreator +
+          "</a></strong></span>" +
         "</p>";
     }
 
@@ -1332,10 +1463,18 @@ document.addEventListener("DOMContentLoaded", function () {
         "</li>";
     }
     if (safeCreator) {
+      var creatorHrefModal = getPublicProfilePageUrl(
+        event.creatorUsername || ""
+      ).replace(/'/g, "%27");
       html +=
         "<li class='event-details-meta-row'>" +
           "<span class='event-meta-icon' aria-hidden='true'>\uD83D\uDC64</span>" +
-          "<span><strong>Created by:</strong> @" + safeCreator + "</span>" +
+          "<span><strong>Created by:</strong> " +
+          "<a class='event-creator-link' href='" +
+          creatorHrefModal +
+          "'>@" +
+          safeCreator +
+          "</a></span>" +
         "</li>";
     }
     // The going count starts as a friendly loading hint and is replaced
@@ -1348,6 +1487,16 @@ document.addEventListener("DOMContentLoaded", function () {
         "</span>" +
       "</li>";
     html += "</ul>";
+
+    // Full attendee list (filled after GET /api/rsvps/event/:id returns).
+    html +=
+      "<section class='event-details-attendees-section' aria-labelledby='event-details-attendees-heading'>" +
+        "<h4 id='event-details-attendees-heading' class='event-details-section-heading'>" +
+          "Who\u2019s going" +
+        "</h4>" +
+        "<ul id='event-details-attendees-list' class='event-details-attendees-list' " +
+          "aria-label='People who RSVP\u2019d'></ul>" +
+      "</section>";
 
     // Full description (no clamping in the modal — show it all).
     if (safeDescription) {
@@ -1396,6 +1545,48 @@ document.addEventListener("DOMContentLoaded", function () {
     const safe = typeof count === "number" && count >= 0 ? count : 0;
     target.textContent =
       safe + (safe === 1 ? " person going" : " people going");
+  }
+
+  function populateEventDetailsAttendees(bodyEl, data) {
+    if (!bodyEl) return;
+    var ul = bodyEl.querySelector("#event-details-attendees-list");
+    if (!ul) return;
+    var attendees = data && Array.isArray(data.attendees) ? data.attendees : [];
+    ul.innerHTML = "";
+    if (attendees.length === 0) {
+      var emptyLi = document.createElement("li");
+      emptyLi.className = "event-details-attendees-empty";
+      emptyLi.textContent = "No RSVPs yet.";
+      ul.appendChild(emptyLi);
+      return;
+    }
+    attendees.forEach(function (a) {
+      var li = document.createElement("li");
+      li.className = "event-details-attendee-row";
+      var link = document.createElement("a");
+      link.className = "event-details-attendee-link";
+      link.href = getPublicProfilePageUrl(a.username);
+      var av = document.createElement("div");
+      fillUserAvatarFromProfile(av, a);
+      link.appendChild(av);
+      var text = document.createElement("div");
+      text.className = "event-details-attendee-text";
+      var nameEl = document.createElement("span");
+      nameEl.className = "event-details-attendee-name";
+      var disp =
+        a.displayName && String(a.displayName).trim() !== ""
+          ? String(a.displayName).trim()
+          : "";
+      nameEl.textContent = disp !== "" ? disp : a.username || "Member";
+      var handle = document.createElement("span");
+      handle.className = "event-details-attendee-handle";
+      handle.textContent = a.username ? "@" + a.username : "";
+      text.appendChild(nameEl);
+      text.appendChild(handle);
+      link.appendChild(text);
+      li.appendChild(link);
+      ul.appendChild(li);
+    });
   }
 
   // The modal's fetch handlers read this ref so they always know which event
@@ -1447,10 +1638,39 @@ document.addEventListener("DOMContentLoaded", function () {
   function buildCommentRowHtml(comment, opts) {
     const opt = opts || {};
     const safeUser = escapeHtml(comment.creatorUsername || "member");
+    const unameRaw = (comment.creatorUsername || "").trim();
+    const profUrl = unameRaw ? getPublicProfilePageUrl(unameRaw) : "";
+    const hrefAttr = profUrl ? escapeHtmlAttr(profUrl) : "";
     const safeText = escapeHtml(comment.text || "").replace(/\r\n|\n|\r/g, "<br>");
     const safeTime = escapeHtml(formatCommentTimestamp(comment.createdAt));
     const isoAttr = escapeHtmlAttr(comment.createdAt || "");
     const idAttr = escapeHtmlAttr(comment.id || "");
+    const avatarInner = buildCommentAvatarInner(comment);
+
+    const avatarBlock =
+      profUrl !== ""
+        ? "<a class='event-comment-avatar-link' href='" +
+          hrefAttr +
+          "' aria-label='View @" +
+          safeUser +
+          "\u2019s profile'>" +
+          "<span class='event-comment-avatar' aria-hidden='true'>" +
+          avatarInner +
+          "</span></a>"
+        : "<span class='event-comment-avatar' aria-hidden='true'>" +
+          avatarInner +
+          "</span>";
+
+    const authorBlock =
+      profUrl !== ""
+        ? "<a class='event-comment-author event-comment-author-link' href='" +
+          hrefAttr +
+          "'>@" +
+          safeUser +
+          "</a>"
+        : "<span class='event-comment-author'>@" +
+          safeUser +
+          "</span>";
 
     let deleteBtn = "";
     if (opt.showDelete && comment.id) {
@@ -1467,14 +1687,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
     return (
       "<li class='event-comment-item'>" +
-        "<div class='event-comment-avatar' aria-hidden='true'>" +
-          buildCommentAvatarInner(comment) +
-        "</div>" +
+        avatarBlock +
         "<div class='event-comment-body'>" +
           "<div class='event-comment-meta'>" +
-            "<span class='event-comment-author'>@" +
-            safeUser +
-            "</span>" +
+            authorBlock +
             "<time class='event-comment-time' datetime='" +
             isoAttr +
             "'>" +
@@ -1606,13 +1822,15 @@ document.addEventListener("DOMContentLoaded", function () {
           } else {
             updateGoingCount(0);
           }
+          populateEventDetailsAttendees(detailsBody, data || {});
         })
         .catch(function () {
-          // Network/parse problem — keep showing "…" rather than a wrong
-          // number. The rest of the modal still works.
+          updateGoingCount(0);
+          populateEventDetailsAttendees(detailsBody, { attendees: [] });
         });
     } else {
       updateGoingCount(0);
+      populateEventDetailsAttendees(detailsBody, { attendees: [] });
     }
 
     syncEventCommentsPanel(event);
@@ -2378,7 +2596,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const loginMessage = document.getElementById("login-message");
   if (!loginForm || !loginEmail || !loginPassword) return;
 
-  const LOGIN_API_URL = "https://csc131-live-event.onrender.com/api/login";
+  const LOGIN_API_URL = LIVE_EVENT_API_BASE + "/login";
 
   function showMsg(text, type) {
     if (!loginMessage) {
@@ -2492,7 +2710,7 @@ document.addEventListener("DOMContentLoaded", function () {
     return;
   }
 
-  const SIGNUP_API_URL = "https://csc131-live-event.onrender.com/api/signup";
+  const SIGNUP_API_URL = LIVE_EVENT_API_BASE + "/signup";
 
   function showMsg(text, type) {
     if (!signupMessage) {
@@ -2699,7 +2917,13 @@ function isSafeProfilePictureDataUrl(s) {
 
 /** First letter for the fallback disc (matches profile header behavior). */
 function navProfileInitialLetter(user) {
-  var source = (user && (user.fullName || user.username)) || "U";
+  var source =
+    (user &&
+      (user.fullName ||
+        user.displayName ||
+        user.name ||
+        user.username)) ||
+    "U";
   var ch = String(source).trim().charAt(0);
   return (ch || "U").toUpperCase();
 }
@@ -2780,7 +3004,7 @@ function refreshNavProfileAvatar() {
 }
 
 // Same host as other fetch calls in this file (absolute URL works with file:// opens too).
-var PROFILE_API_URL = "https://csc131-live-event.onrender.com/api/profile";
+var PROFILE_API_URL = LIVE_EVENT_API_BASE + "/profile";
 
 /**
  * Pull the latest picture from Mongo so the navbar matches the server after
@@ -2820,6 +3044,71 @@ function fetchNavProfilePictureForNavbar() {
     .catch(function (err) {
       console.warn("GET /api/profile (navbar sync) failed:", err);
     });
+}
+
+/** Escape text for safe HTML insertion (shared by public profiles + event links). */
+function escapeHtmlPublic(value) {
+  if (value === null || value === undefined) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Deep link to another member's public profile page.
+ * Example: public-profile.html?username=alice
+ */
+function getPublicProfilePageUrl(username) {
+  var u = username && String(username).trim();
+  if (!u) return "public-profile.html";
+  return "public-profile.html?username=" + encodeURIComponent(u);
+}
+
+/**
+ * Fill a circular avatar div (emoji, uploaded image, or initial) using the
+ * same rules as the profile header — used on search/friends cards + RSVP rows.
+ */
+function fillUserAvatarFromProfile(avatarEl, profile) {
+  if (!avatarEl) return;
+  avatarEl.classList.add("user-result-avatar");
+  avatarEl.innerHTML = "";
+  avatarEl.classList.remove("has-emoji", "has-image");
+
+  var pic =
+    profile && profile.profilePicture
+      ? String(profile.profilePicture).trim()
+      : "";
+  var picType =
+    (profile && profile.profilePictureType && String(profile.profilePictureType)) ||
+    "default";
+
+  if (picType === "uploaded" && pic && isSafeProfilePictureDataUrl(pic)) {
+    var img = document.createElement("img");
+    img.src = pic;
+    img.alt = "";
+    img.addEventListener("error", function () {
+      avatarEl.innerHTML = "";
+      avatarEl.classList.remove("has-image");
+      avatarEl.textContent = navProfileInitialLetter(profile);
+    });
+    avatarEl.classList.add("has-image");
+    avatarEl.appendChild(img);
+    return;
+  }
+
+  if (picType === "default" && pic) {
+    var def = getDefaultAvatar(pic);
+    if (def) {
+      avatarEl.classList.add("has-emoji");
+      avatarEl.textContent = def.emoji;
+      return;
+    }
+  }
+
+  avatarEl.textContent = navProfileInitialLetter(profile);
 }
 
 function friendlyFetchErrorMessage(err) {
@@ -3211,6 +3500,23 @@ document.addEventListener("DOMContentLoaded", function () {
     avatarUploadInput.addEventListener("change", handleAvatarUploadChange);
   }
 
+  function mergeProfileFieldsFromServerUser(dataUser) {
+    if (!dataUser) return;
+    var prof = loadProfile();
+    if (dataUser.name != null && String(dataUser.name).trim() !== "") {
+      prof.fullName = dataUser.name;
+    }
+    if (dataUser.username) prof.username = dataUser.username;
+    if (dataUser.email != null) prof.email = dataUser.email;
+    if (dataUser.bio != null) prof.bio = dataUser.bio;
+    if (dataUser.school != null) prof.school = dataUser.school;
+    if (dataUser.location != null) prof.location = dataUser.location;
+    if (Array.isArray(dataUser.hobbies)) {
+      prof.hobbies = dataUser.hobbies.slice();
+    }
+    saveProfile(prof);
+  }
+
   function fetchProfilePictureFromServer() {
     var current = getCurrentUser();
     if (!current || !current.username) return;
@@ -3225,6 +3531,7 @@ document.addEventListener("DOMContentLoaded", function () {
       })
       .then(function (data) {
         if (!data || !data.user) return;
+        mergeProfileFieldsFromServerUser(data.user);
         pictureState = {
           profilePicture: data.user.profilePicture || "",
           profilePictureType: data.user.profilePictureType || "default",
@@ -3232,6 +3539,8 @@ document.addEventListener("DOMContentLoaded", function () {
         syncPictureToCurrentUser(pictureState);
         renderAvatarGrid();
         renderHeaderAvatar(loadProfile());
+        renderDisplay(loadProfile());
+        fillEditInputs(loadProfile());
       })
       .catch(function (err) {
         console.error("GET /api/profile/:username failed:", err);
@@ -3413,9 +3722,52 @@ document.addEventListener("DOMContentLoaded", function () {
       setCurrentUser(current);
     }
 
-    renderDisplay(profile);
-    exitEditMode();
-    setMessage("Profile saved.", "success");
+    const detailsUrl =
+      PROFILE_API_URL +
+      "/" +
+      encodeURIComponent(profile.username) +
+      "/details";
+
+    setMessage("Saving\u2026", "info");
+
+    fetch(detailsUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: profile.fullName,
+        displayName: profile.fullName,
+        bio: profile.bio,
+        school: profile.school,
+        location: profile.location,
+        hobbies: profile.hobbies,
+      }),
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          setMessage(
+            (result.data && result.data.error) ||
+              "Saved on this device — server sync failed.",
+            "error"
+          );
+        } else {
+          setMessage("Profile saved.", "success");
+        }
+        renderDisplay(profile);
+        exitEditMode();
+      })
+      .catch(function () {
+        setMessage(
+          "Saved on this device — could not reach server.",
+          "error"
+        );
+        renderDisplay(profile);
+        exitEditMode();
+      });
   }
 
   // Wire up the buttons.
@@ -3457,7 +3809,7 @@ document.addEventListener("DOMContentLoaded", function () {
   // Bail on pages without the markup (everything except friends.html today).
   if (!searchForm || !searchInput || !resultsContainer) return;
 
-  const SEARCH_API_URL = "https://csc131-live-event.onrender.com/api/users/search";
+  const SEARCH_API_URL = LIVE_EVENT_API_BASE + "/users/search";
 
   function setSearchMessage(text, type) {
     if (!messageEl) return;
@@ -3485,22 +3837,14 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function buildAvatar(user) {
-    const avatar = document.createElement("div");
-    avatar.className = "user-result-avatar";
-
-    const url = user.profilePicture && String(user.profilePicture).trim();
-    if (url) {
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = ""; // Decorative; the name is shown right next to it.
-      // If the image fails to load, fall back to the initial letter.
-      img.addEventListener("error", function () {
-        avatar.innerHTML = "";
-        avatar.textContent = initialFor(user);
-      });
-      avatar.appendChild(img);
-    } else {
-      avatar.textContent = initialFor(user);
+    var avatar = document.createElement("div");
+    fillUserAvatarFromProfile(avatar, user);
+    if (user && user.username) {
+      var wrap = document.createElement("a");
+      wrap.className = "user-result-avatar-link";
+      wrap.href = getPublicProfilePageUrl(user.username);
+      wrap.appendChild(avatar);
+      return wrap;
     }
     return avatar;
   }
@@ -3509,9 +3853,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Friend request helpers
   // -------------------------------------------------------------------------
   // Endpoint that creates a new friend request on the backend.
-  const FRIEND_REQUEST_API_URL = "https://csc131-live-event.onrender.com/api/friends/request";
+  const FRIEND_REQUEST_API_URL = LIVE_EVENT_API_BASE + "/friends/request";
   const FRIEND_REQUEST_CANCEL_API_URL =
-    "https://csc131-live-event.onrender.com/api/friend-requests/cancel";
+    LIVE_EVENT_API_BASE + "/friend-requests/cancel";
 
   // Returns true if we already sent the given user a request earlier (we
   // remember outgoing requests in localStorage so the Friends page can show
@@ -3529,32 +3873,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // no duplicates). Safe to call after a successful POST OR after the
   // backend tells us a request already exists.
   function rememberOutgoing(receiverUsername) {
-    const lower = String(receiverUsername || "").toLowerCase();
-    if (!lower) return;
-    const list = getOutgoingFriendRequests();
-    const exists = list.some(function (entry) {
-      return String(entry.receiverUsername || "").toLowerCase() === lower;
-    });
-    if (!exists) {
-      list.push({
-        receiverUsername: lower,
-        createdAt: new Date().toISOString(),
-      });
-      setOutgoingFriendRequests(list);
-    }
+    rememberOutgoingFriendRequest(receiverUsername);
   }
 
-  // Remove a receiver from the local outgoing list (after cancel or 404).
   function forgetOutgoing(receiverUsername) {
-    const lower = String(receiverUsername || "").toLowerCase();
-    if (!lower) return;
-    const list = getOutgoingFriendRequests();
-    const filtered = list.filter(function (entry) {
-      return String(entry.receiverUsername || "").toLowerCase() !== lower;
-    });
-    if (filtered.length !== list.length) {
-      setOutgoingFriendRequests(filtered);
-    }
+    forgetOutgoingFriendRequest(receiverUsername);
   }
 
   // Sends DELETE cancel; restores the idle “Add Friend” label when undone.
@@ -3786,15 +4109,32 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const name = document.createElement("p");
     name.className = "user-result-name";
-    name.textContent =
+    const displayLabel =
       user.displayName && String(user.displayName).trim() !== ""
         ? user.displayName
         : user.username || "Unknown";
+    if (user.username) {
+      const na = document.createElement("a");
+      na.className = "user-profile-inline-link";
+      na.href = getPublicProfilePageUrl(user.username);
+      na.textContent = displayLabel;
+      name.appendChild(na);
+    } else {
+      name.textContent = displayLabel;
+    }
     info.appendChild(name);
 
     const handle = document.createElement("p");
     handle.className = "user-result-handle";
-    handle.textContent = user.username ? "@" + user.username : "";
+    if (user.username) {
+      const ha = document.createElement("a");
+      ha.className = "user-profile-inline-link";
+      ha.href = getPublicProfilePageUrl(user.username);
+      ha.textContent = "@" + user.username;
+      handle.appendChild(ha);
+    } else {
+      handle.textContent = "";
+    }
     info.appendChild(handle);
 
     if (user.bio && String(user.bio).trim() !== "") {
@@ -3909,7 +4249,7 @@ document.addEventListener("DOMContentLoaded", function () {
 //   3. Outgoing requests      → mirrored in localStorage (see key below — backend lacks list)
 //
 // Real-time flair (explain if asked): optional Socket.IO client connects to same
-// Express host (`io("https://csc131-live-event.onrender.com")`) once username is known — used so
+// Express host (`io(LIVE_EVENT_API_ORIGIN)`) once username is known — used so
 // new messages/group events can propagate without hammering polling everywhere.
 //
 // Lower in this SAME giant listener you'll find:
@@ -3959,6 +4299,35 @@ function setOutgoingFriendRequests(list) {
   );
 }
 
+/** Shared by Friends search + public-profile.html (same localStorage shape). */
+function rememberOutgoingFriendRequest(receiverUsername) {
+  const lower = String(receiverUsername || "").toLowerCase();
+  if (!lower) return;
+  const list = getOutgoingFriendRequests();
+  const exists = list.some(function (entry) {
+    return String(entry.receiverUsername || "").toLowerCase() === lower;
+  });
+  if (!exists) {
+    list.push({
+      receiverUsername: lower,
+      createdAt: new Date().toISOString(),
+    });
+    setOutgoingFriendRequests(list);
+  }
+}
+
+function forgetOutgoingFriendRequest(receiverUsername) {
+  const lower = String(receiverUsername || "").toLowerCase();
+  if (!lower) return;
+  const list = getOutgoingFriendRequests();
+  const filtered = list.filter(function (entry) {
+    return String(entry.receiverUsername || "").toLowerCase() !== lower;
+  });
+  if (filtered.length !== list.length) {
+    setOutgoingFriendRequests(filtered);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", function () {
   const friendsPage = document.getElementById("friends-page");
   if (!friendsPage) return; // Not on the friends page — bail.
@@ -3982,7 +4351,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   var socket = null;
   if (typeof io === "function") {
-    socket = io("https://csc131-live-event.onrender.com");
+    socket = io(LIVE_EVENT_API_ORIGIN);
     socket.on("connect", function () {
       socket.emit("join", myUsername);
       console.log("[socket] connected and joined", {
@@ -3995,12 +4364,12 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  const FRIENDS_API_URL = "https://csc131-live-event.onrender.com/api/friends";
-  const REMOVE_FRIEND_API_URL = "https://csc131-live-event.onrender.com/api/friends/remove";
-  const REQUESTS_API_URL = "https://csc131-live-event.onrender.com/api/friends/requests";
-  const ACCEPT_API_URL = "https://csc131-live-event.onrender.com/api/friends/accept";
-  const DENY_API_URL = "https://csc131-live-event.onrender.com/api/friends/deny";
-  const GROUP_CHATS_API_URL = "https://csc131-live-event.onrender.com/api/groupchats";
+  const FRIENDS_API_URL = LIVE_EVENT_API_BASE + "/friends";
+  const REMOVE_FRIEND_API_URL = LIVE_EVENT_API_BASE + "/friends/remove";
+  const REQUESTS_API_URL = LIVE_EVENT_API_BASE + "/friends/requests";
+  const ACCEPT_API_URL = LIVE_EVENT_API_BASE + "/friends/accept";
+  const DENY_API_URL = LIVE_EVENT_API_BASE + "/friends/deny";
+  const GROUP_CHATS_API_URL = LIVE_EVENT_API_BASE + "/groupchats";
 
   /** Cached friends list for group create / add-member pickers. */
   var friendsListCache = [];
@@ -4052,24 +4421,13 @@ document.addEventListener("DOMContentLoaded", function () {
   // Build a circular avatar (image if profilePicture is set, else initial).
   function buildAvatar(profile) {
     const avatar = document.createElement("div");
-    avatar.className = "user-result-avatar";
-
-    const url =
-      profile && profile.profilePicture
-        ? String(profile.profilePicture).trim()
-        : "";
-
-    if (url) {
-      const img = document.createElement("img");
-      img.src = url;
-      img.alt = "";
-      img.addEventListener("error", function () {
-        avatar.innerHTML = "";
-        avatar.textContent = initialFor(profile);
-      });
-      avatar.appendChild(img);
-    } else {
-      avatar.textContent = initialFor(profile);
+    fillUserAvatarFromProfile(avatar, profile);
+    if (profile && profile.username) {
+      const wrap = document.createElement("a");
+      wrap.className = "user-result-avatar-link";
+      wrap.href = getPublicProfilePageUrl(profile.username);
+      wrap.appendChild(avatar);
+      return wrap;
     }
     return avatar;
   }
@@ -4081,15 +4439,32 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const name = document.createElement("p");
     name.className = "user-result-name";
-    name.textContent =
+    const displayLabel =
       profile.displayName && String(profile.displayName).trim() !== ""
         ? profile.displayName
         : profile.username || "Unknown";
+    if (profile.username) {
+      const na = document.createElement("a");
+      na.className = "user-profile-inline-link";
+      na.href = getPublicProfilePageUrl(profile.username);
+      na.textContent = displayLabel;
+      name.appendChild(na);
+    } else {
+      name.textContent = displayLabel;
+    }
     info.appendChild(name);
 
     const handle = document.createElement("p");
     handle.className = "user-result-handle";
-    handle.textContent = profile.username ? "@" + profile.username : "";
+    if (profile.username) {
+      const ha = document.createElement("a");
+      ha.className = "user-profile-inline-link";
+      ha.href = getPublicProfilePageUrl(profile.username);
+      ha.textContent = "@" + profile.username;
+      handle.appendChild(ha);
+    } else {
+      handle.textContent = "";
+    }
     info.appendChild(handle);
 
     if (profile.bio && String(profile.bio).trim() !== "") {
@@ -4278,9 +4653,14 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const sender = request.sender || {
       username: request.senderUsername,
+      name: "",
       displayName: "",
       profilePicture: "",
+      profilePictureType: "default",
       bio: "",
+      school: "",
+      location: "",
+      hobbies: [],
     };
 
     card.appendChild(buildAvatar(sender));
@@ -4527,7 +4907,7 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     var url =
-      "https://csc131-live-event.onrender.com/api/users/search?username=" +
+      LIVE_EVENT_API_BASE + "/users/search?username=" +
       encodeURIComponent(query);
 
     fetch(url)
@@ -5278,9 +5658,9 @@ document.addEventListener("DOMContentLoaded", function () {
   //
   // DOM overlay (#chat-overlay) isolates UX from the Friends page grid —
   // closing overlay does not destroy friendship list state.
-  var MESSAGES_API_URL = "https://csc131-live-event.onrender.com/api/messages";
-  var CONVERSATIONS_API_URL = "https://csc131-live-event.onrender.com/api/conversations";
-  var MESSAGES_READ_API_URL = "https://csc131-live-event.onrender.com/api/messages/read";
+  var MESSAGES_API_URL = LIVE_EVENT_API_BASE + "/messages";
+  var CONVERSATIONS_API_URL = LIVE_EVENT_API_BASE + "/conversations";
+  var MESSAGES_READ_API_URL = LIVE_EVENT_API_BASE + "/messages/read";
 
   var conversationsListEl = document.getElementById("conversations-list");
   var chatOverlay = document.getElementById("chat-overlay");
@@ -5305,26 +5685,129 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  function conversationProfileDisplayLabel(profile) {
+    var p = profile || {};
+    if (p.displayName && String(p.displayName).trim() !== "") {
+      return p.displayName;
+    }
+    if (p.fullName && String(p.fullName).trim() !== "") {
+      return p.fullName;
+    }
+    if (p.name && String(p.name).trim() !== "") {
+      return p.name;
+    }
+    return p.username || "Member";
+  }
+
+  function stopConversationCardLinkBubble(ev) {
+    ev.stopPropagation();
+  }
+
+  function applyPartnerProfileToConversationCard(card, profile) {
+    if (!card || !profile) return;
+    var av = card.querySelector(".conversation-card-avatar");
+    if (av) {
+      fillUserAvatarFromProfile(av, profile);
+    }
+    var nameEl = card.querySelector(".user-result-name");
+    if (nameEl) {
+      nameEl.innerHTML = "";
+      var label = conversationProfileDisplayLabel(profile);
+      if (profile.username) {
+        var na = document.createElement("a");
+        na.className = "user-profile-inline-link";
+        na.href = getPublicProfilePageUrl(profile.username);
+        na.textContent = label;
+        na.addEventListener("click", stopConversationCardLinkBubble);
+        nameEl.appendChild(na);
+      } else {
+        nameEl.textContent = label;
+      }
+    }
+    var handleEl = card.querySelector(".user-result-handle");
+    if (handleEl) {
+      handleEl.innerHTML = "";
+      var un =
+        profile.username ||
+        String(card.getAttribute("data-partner") || "").trim();
+      if (un) {
+        var ha = document.createElement("a");
+        ha.className = "user-profile-inline-link";
+        ha.href = getPublicProfilePageUrl(un);
+        ha.textContent = "@" + un;
+        ha.addEventListener("click", stopConversationCardLinkBubble);
+        handleEl.appendChild(ha);
+      }
+    }
+  }
+
+  function enrichConversationCardProfile(card, partner) {
+    if (!card || !partner || card.getAttribute("data-profile-loaded") === "1") {
+      return;
+    }
+    fetch(
+      LIVE_EVENT_API_BASE + "/users/" + encodeURIComponent(partner)
+    )
+      .then(function (response) {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then(function (data) {
+        if (!data || !data.user) return;
+        card.setAttribute("data-profile-loaded", "1");
+        applyPartnerProfileToConversationCard(card, data.user);
+      })
+      .catch(function () {
+        /* keep initials until next full inbox load */
+      });
+  }
+
   function buildConversationCard(convo) {
     var card = document.createElement("article");
     card.className = "user-result-card friend-card conversation-card";
-    card.setAttribute(
-      "data-partner",
-      String(convo.partner || "").toLowerCase()
-    );
+    var partnerLower = String(convo.partner || "").toLowerCase();
+    card.setAttribute("data-partner", partnerLower);
+
+    var profile = convo.partnerProfile || { username: convo.partner };
 
     var avatar = document.createElement("div");
-    avatar.className = "user-result-avatar";
-    var initial = (convo.partner || "U").charAt(0).toUpperCase();
-    avatar.textContent = initial;
+    avatar.className = "user-result-avatar conversation-card-avatar";
+    fillUserAvatarFromProfile(avatar, profile);
+    if (convo.partnerProfile) {
+      card.setAttribute("data-profile-loaded", "1");
+    }
+
     card.appendChild(avatar);
 
     var info = document.createElement("div");
     info.className = "user-result-info";
     var name = document.createElement("p");
     name.className = "user-result-name";
-    name.textContent = "@" + convo.partner;
+    var displayLabel = conversationProfileDisplayLabel(profile);
+    if (profile.username) {
+      var na = document.createElement("a");
+      na.className = "user-profile-inline-link";
+      na.href = getPublicProfilePageUrl(profile.username);
+      na.textContent = displayLabel;
+      na.addEventListener("click", stopConversationCardLinkBubble);
+      name.appendChild(na);
+    } else {
+      name.textContent = displayLabel;
+    }
     info.appendChild(name);
+
+    var handle = document.createElement("p");
+    handle.className = "user-result-handle";
+    var handleUser = profile.username || convo.partner || "";
+    if (handleUser) {
+      var ha = document.createElement("a");
+      ha.className = "user-profile-inline-link";
+      ha.href = getPublicProfilePageUrl(handleUser);
+      ha.textContent = "@" + handleUser;
+      ha.addEventListener("click", stopConversationCardLinkBubble);
+      handle.appendChild(ha);
+    }
+    info.appendChild(handle);
 
     var preview = document.createElement("p");
     preview.className = "convo-preview";
@@ -5383,7 +5866,9 @@ document.addEventListener("DOMContentLoaded", function () {
       };
       var empty = conversationsListEl.querySelector(".friend-empty");
       if (empty) empty.remove();
-      conversationsListEl.prepend(buildConversationCard(convo));
+      var newCard = buildConversationCard(convo);
+      conversationsListEl.prepend(newCard);
+      enrichConversationCardProfile(newCard, partner);
       return;
     }
 
@@ -5739,7 +6224,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const listEl = document.getElementById("rsvped-events-list");
   if (!listEl) return; // Only the profile page has this container.
 
-  const RSVPS_API_URL = "https://csc131-live-event.onrender.com/api/rsvps";
+  const RSVPS_API_URL = LIVE_EVENT_API_BASE + "/rsvps";
 
   // Replace the contents of the list with a single status paragraph
   // (used for "Loading…", "No RSVP'd events yet.", login-required, and
@@ -5976,9 +6461,9 @@ const confirmPasswordInput = document.getElementById("confirm-password");
 const passwordMessage = document.getElementById("password-message");
 
 const CHANGE_PASSWORD_API_URL =
-  "https://csc131-live-event.onrender.com/api/settings/change-password";
+  LIVE_EVENT_API_BASE + "/settings/change-password";
 const DELETE_ACCOUNT_API_URL =
-  "https://csc131-live-event.onrender.com/api/settings/delete-account";
+  LIVE_EVENT_API_BASE + "/settings/delete-account";
 
 function showSettingsMessage(element, message, type) {
   if (!element) return;
@@ -6114,8 +6599,8 @@ const adminKeyMessage = document.getElementById("admin-key-message");
 const adminStatusPanel = document.getElementById("admin-status-panel");
 const exitAdminBtn = document.getElementById("exit-admin-btn");
 
-const ADMIN_KEY_API_URL = "https://csc131-live-event.onrender.com/api/settings/admin-key";
-const EXIT_ADMIN_API_URL = "https://csc131-live-event.onrender.com/api/settings/exit-admin";
+const ADMIN_KEY_API_URL = LIVE_EVENT_API_BASE + "/settings/admin-key";
+const EXIT_ADMIN_API_URL = LIVE_EVENT_API_BASE + "/settings/exit-admin";
 
 // Show the right panel (active vs unlock form) based on the current role.
 // Called once on page load and again after every successful action so the
@@ -6518,7 +7003,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   let pendingEventImageBase64 = "";
 
-  const ADD_EVENT_API_URL = "https://csc131-live-event.onrender.com/api/events";
+  const ADD_EVENT_API_URL = LIVE_EVENT_API_BASE + "/events";
 
   // Tiny helper that mirrors the signup/login pages: writes the message
   // text and applies the matching color class (green for success, red for
@@ -6815,6 +7300,351 @@ document.addEventListener("DOMContentLoaded", function () {
   if (confirmPassword) {
     confirmPassword.addEventListener("input", updateMatchMessage);
   }
+});
+
+// ===========================================================================
+// PUBLIC PROFILE PAGE (public-profile.html?username=)
+// ---------------------------------------------------------------------------
+// Loads GET /api/users/:username and offers friend request when logged in.
+// ===========================================================================
+document.addEventListener("DOMContentLoaded", function () {
+  var root = document.getElementById("public-profile-root");
+  if (!root) return;
+
+  var API_USERS_BASE =
+    LIVE_EVENT_API_BASE + "/users";
+  var API_FRIENDS_BASE =
+    LIVE_EVENT_API_BASE + "/friends";
+  var FRIEND_POST_URL =
+    LIVE_EVENT_API_BASE + "/friends/request";
+
+  var statusEl = document.getElementById("public-profile-status");
+  var contentEl = document.getElementById("public-profile-content");
+  var avatarEl = document.getElementById("public-profile-avatar");
+  var nameEl = document.getElementById("public-profile-display-name");
+  var userEl = document.getElementById("public-profile-username");
+  var bioEl = document.getElementById("public-profile-bio");
+  var schoolVal = document.getElementById("public-profile-school-val");
+  var locVal = document.getElementById("public-profile-location-val");
+  var hobbiesBlock = document.getElementById("public-profile-hobbies-block");
+  var hobbiesEl = document.getElementById("public-profile-hobbies");
+  var friendBlock = document.getElementById("public-profile-friend-block");
+  var friendBtn = document.getElementById("public-profile-friend-btn");
+  var friendMsg = document.getElementById("public-profile-friend-msg");
+  var eventsList = document.getElementById("public-profile-events-list");
+
+  var params = new URLSearchParams(window.location.search || "");
+  var viewedUsername = (params.get("username") || "").trim();
+  if (!viewedUsername) {
+    if (statusEl) {
+      statusEl.textContent = "Missing username in the URL.";
+      statusEl.classList.add("is-error");
+    }
+    return;
+  }
+
+  function setStatus(text, type) {
+    if (!statusEl) return;
+    statusEl.textContent = text || "";
+    statusEl.classList.remove("is-error", "is-success");
+    if (type) statusEl.classList.add("is-" + type);
+  }
+
+  function setFriendUi(text, type) {
+    if (!friendMsg) return;
+    friendMsg.textContent = text || "";
+    friendMsg.classList.remove("is-error", "is-success");
+    if (type) friendMsg.classList.add("is-" + type);
+  }
+
+  var viewedUser = null;
+  var myFriendsList = null;
+
+  function renderPublicProfile(user, eventsCreated) {
+    viewedUser = user;
+    if (contentEl) contentEl.classList.remove("is-hidden");
+    if (avatarEl) {
+      fillUserAvatarFromProfile(avatarEl, user);
+    }
+    var display =
+      user.displayName && String(user.displayName).trim() !== ""
+        ? user.displayName
+        : user.fullName ||
+          user.name ||
+          user.username;
+    if (nameEl) nameEl.textContent = display || "Member";
+    if (userEl) userEl.textContent = user.username ? "@" + user.username : "";
+    if (bioEl) {
+      bioEl.textContent =
+        user.bio && String(user.bio).trim() !== ""
+          ? user.bio
+          : "No bio yet.";
+      bioEl.classList.toggle(
+        "is-empty",
+        !user.bio || String(user.bio).trim() === ""
+      );
+    }
+    if (schoolVal) {
+      schoolVal.textContent =
+        user.school && String(user.school).trim() !== ""
+          ? user.school
+          : "—";
+    }
+    if (locVal) {
+      locVal.textContent =
+        user.location && String(user.location).trim() !== ""
+          ? user.location
+          : "—";
+    }
+    var hobbies = Array.isArray(user.hobbies) ? user.hobbies : [];
+    if (
+      hobbies.length === 0 &&
+      Array.isArray(user.interests) &&
+      user.interests.length
+    ) {
+      hobbies = user.interests;
+    }
+    if (hobbiesBlock && hobbiesEl) {
+      if (hobbies.length === 0) {
+        hobbiesBlock.classList.add("is-hidden");
+      } else {
+        hobbiesBlock.classList.remove("is-hidden");
+        hobbiesEl.innerHTML = "";
+        hobbies.forEach(function (h) {
+          var span = document.createElement("span");
+          span.className = "hobby-pill";
+          span.textContent = h;
+          hobbiesEl.appendChild(span);
+        });
+      }
+    }
+    if (eventsList) {
+      eventsList.innerHTML = "";
+      var evs = Array.isArray(eventsCreated) ? eventsCreated : [];
+      if (evs.length === 0) {
+        var li0 = document.createElement("li");
+        li0.className = "public-profile-events-empty";
+        li0.textContent = "No events created yet.";
+        eventsList.appendChild(li0);
+      } else {
+        evs.forEach(function (ev) {
+          var li = document.createElement("li");
+          li.className = "public-profile-event-row";
+          var a = document.createElement("a");
+          a.href = "events.html";
+          a.textContent = ev.title || "Untitled event";
+          li.appendChild(a);
+          eventsList.appendChild(li);
+        });
+      }
+    }
+
+    wireFriendButton();
+  }
+
+  function isFriendWithViewed() {
+    if (!myFriendsList || !viewedUser || !viewedUser.username) return false;
+    var t = String(viewedUser.username).toLowerCase();
+    return myFriendsList.some(function (f) {
+      return (
+        f &&
+        f.username &&
+        String(f.username).toLowerCase() === t
+      );
+    });
+  }
+
+  function wireFriendButton() {
+    var me = getCurrentUser();
+    if (!friendBtn || !viewedUser || !viewedUser.username) return;
+
+    friendBtn.classList.add("is-hidden");
+    friendBtn.disabled = false;
+    setFriendUi("", "");
+
+    if (!me || !isLoggedIn() || !me.username) {
+      if (friendBlock) friendBlock.classList.remove("is-hidden");
+      setFriendUi("Log in to send a friend request.", "info");
+      return;
+    }
+
+    var myL = String(me.username).toLowerCase();
+    var theirL = String(viewedUser.username).toLowerCase();
+
+    if (friendBlock) friendBlock.classList.remove("is-hidden");
+
+    if (myL === theirL) {
+      setFriendUi("This is your profile.", "info");
+      return;
+    }
+
+    if (isFriendWithViewed()) {
+      setFriendUi("Already friends.", "success");
+      return;
+    }
+
+    var pending =
+      typeof getOutgoingFriendRequests === "function" &&
+      getOutgoingFriendRequests().some(function (entry) {
+        return (
+          String(entry.receiverUsername || "").toLowerCase() === theirL
+        );
+      });
+
+    if (pending) {
+      setFriendUi("Request pending.", "info");
+      friendBtn.textContent = "Cancel Request";
+      friendBtn.classList.remove("is-hidden");
+      friendBtn.onclick = function () {
+        cancelPublicFriendRequest(theirL);
+      };
+      return;
+    }
+
+    friendBtn.textContent = "Send Friend Request";
+    friendBtn.classList.remove("is-hidden");
+    friendBtn.onclick = function () {
+      sendPublicFriendRequest();
+    };
+  }
+
+  function sendPublicFriendRequest() {
+    var me = getCurrentUser();
+    if (!me || !me.username || !viewedUser || !viewedUser.username) return;
+    friendBtn.disabled = true;
+    setFriendUi("Sending\u2026", "info");
+    fetch(FRIEND_POST_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        senderUsername: me.username,
+        receiverUsername: viewedUser.username,
+      }),
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        friendBtn.disabled = false;
+        if (result.ok) {
+          rememberOutgoingFriendRequest(viewedUser.username);
+          setFriendUi("Friend request sent.", "success");
+          wireFriendButton();
+          return;
+        }
+        var err = (result.data && result.data.error) || "Could not send request.";
+        var low = String(err).toLowerCase();
+        if (low.indexOf("pending") !== -1) {
+          rememberOutgoingFriendRequest(viewedUser.username);
+        }
+        if (low.indexOf("already friends") !== -1) {
+          setFriendUi("Already friends.", "success");
+          wireFriendButton();
+          return;
+        }
+        setFriendUi(err, "error");
+        wireFriendButton();
+      })
+      .catch(function () {
+        friendBtn.disabled = false;
+        setFriendUi("Could not reach the server.", "error");
+        wireFriendButton();
+      });
+  }
+
+  function cancelPublicFriendRequest(receiverLower) {
+    var me = getCurrentUser();
+    if (!me || !me.username) return;
+    friendBtn.disabled = true;
+    setFriendUi("Canceling\u2026", "info");
+    fetch(
+      LIVE_EVENT_API_BASE + "/friend-requests/cancel",
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          senderUsername: me.username,
+          receiverUsername: receiverLower,
+        }),
+      }
+    )
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, status: resp.status, data: data };
+        });
+      })
+      .then(function (result) {
+        friendBtn.disabled = false;
+        if ((result.ok && result.status === 200) || result.status === 404) {
+          forgetOutgoingFriendRequest(receiverLower);
+          setFriendUi("Request canceled.", "success");
+        } else {
+          setFriendUi(
+            (result.data && result.data.error) || "Could not cancel.",
+            "error"
+          );
+        }
+        wireFriendButton();
+      })
+      .catch(function () {
+        friendBtn.disabled = false;
+        setFriendUi("Network error.", "error");
+        wireFriendButton();
+      });
+  }
+
+  setStatus("Loading profile\u2026", "info");
+
+  var profilePromise = fetchLiveEventJson(
+    API_USERS_BASE + "/" + encodeURIComponent(viewedUsername),
+    "GET /api/users/:username"
+  ).then(function (result) {
+    if (!result.ok) {
+      var msg =
+        (result.data &&
+          (result.data.message ||
+            result.data.error)) ||
+        "Could not load profile.";
+      console.error(
+        "[public-profile] API returned error",
+        result.status,
+        result.data
+      );
+      throw new Error(msg);
+    }
+    return result.data;
+  });
+
+  var friendsPromise = Promise.resolve(null);
+  var me = getCurrentUser();
+  if (me && me.username && isLoggedIn()) {
+    friendsPromise = fetch(
+      API_FRIENDS_BASE + "/" +  encodeURIComponent(me.username)
+    ).then(function (resp) {
+      if (!resp.ok) return [];
+      return resp.json();
+    });
+  }
+
+  Promise.all([profilePromise, friendsPromise])
+    .then(function (pair) {
+      var payload = pair[0];
+      myFriendsList = Array.isArray(pair[1]) ? pair[1] : [];
+      setStatus("", "");
+      renderPublicProfile(payload.user, payload.eventsCreated);
+    })
+    .catch(function (err) {
+      console.error("[public-profile] load failed", err);
+      var msg =
+        err && err.isHtmlResponse
+          ? "Profile route not found. Check backend API."
+          : err && err.message
+            ? err.message
+            : "Could not load profile.";
+      setStatus(msg, "error");
+    });
 });
 
 // ===========================================================================

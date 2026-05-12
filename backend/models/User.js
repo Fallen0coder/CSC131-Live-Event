@@ -68,6 +68,15 @@ const userSchema = new mongoose.Schema({
 
   bio: { type: String, default: "", trim: true },
 
+  // Optional fields edited on the Profile page — stored in MongoDB so other
+  // users can see them on the public profile (GET /api/users/:username).
+  school: { type: String, default: "", trim: true },
+  location: { type: String, default: "", trim: true },
+  hobbies: {
+    type: [String],
+    default: [],
+  },
+
   // Accepted friends. We store the *lowercased* username of each friend
   // (the same form as `usernameLower`) so case-insensitive checks like
   // `user.friends.includes(other)` are trivial. The friend routes always

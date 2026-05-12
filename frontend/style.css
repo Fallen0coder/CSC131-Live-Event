@@ -3193,6 +3193,20 @@ body.is-editing-profile .profile-display-only {
   background: var(--color-primary-soft, rgba(99, 102, 241, 0.08));
 }
 
+/* Match Friends list avatars: circle, cover for uploads, centered emoji */
+.conversation-card .conversation-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+.conversation-card .conversation-card-avatar.has-emoji {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
 .convo-preview {
   margin: 0;
   font-size: 0.85rem;
@@ -5448,4 +5462,215 @@ body.theme-dark .settings-card-header:hover {
     animation-duration: 0.38s;
     animation-timing-function: var(--motion-ease-out);
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Public profiles + cross-links (event cards, comments, friends search)
+   --------------------------------------------------------------------------- */
+.event-creator-link,
+.user-profile-inline-link,
+.event-comment-author-link {
+  color: var(--color-primary-dark);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.event-creator-link:hover,
+.user-profile-inline-link:hover,
+.event-comment-author-link:hover {
+  text-decoration: underline;
+}
+
+body.theme-dark .event-creator-link,
+body.theme-dark .user-profile-inline-link,
+body.theme-dark .event-comment-author-link {
+  color: #93c5fd;
+}
+
+.user-result-avatar-link {
+  flex: 0 0 auto;
+  display: flex;
+  border-radius: 50%;
+  text-decoration: none;
+  color: inherit;
+}
+
+.user-result-avatar-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+a.event-avatar--link {
+  text-decoration: none;
+  color: inherit;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-primary-soft);
+}
+
+.event-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.event-avatar-emoji {
+  font-size: 0.62rem;
+  line-height: 1;
+}
+
+.event-avatar-initial {
+  font-size: 0.5rem;
+  font-weight: 800;
+  color: var(--color-primary-dark);
+}
+
+body.theme-dark .event-avatar-initial {
+  color: #c7d2fe;
+}
+
+.event-details-attendees-section {
+  margin-top: 1.25rem;
+}
+
+.event-details-attendees-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.event-details-attendee-link {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  text-decoration: none;
+  color: var(--color-text);
+  padding: 0.4rem 0.5rem;
+  border-radius: 10px;
+  transition:
+    background-color var(--motion-duration-short) ease,
+    transform var(--motion-duration-short) var(--motion-ease-out);
+}
+
+.event-details-attendee-link:hover {
+  background: var(--color-primary-soft);
+}
+
+.event-details-attendee-link .user-result-avatar {
+  width: 40px;
+  height: 40px;
+  font-size: 1rem;
+}
+
+.event-details-attendee-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.event-details-attendee-name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.event-details-attendee-handle {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+
+.event-details-attendees-empty {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin: 0;
+  padding: 0;
+}
+
+.event-comment-avatar-link {
+  text-decoration: none;
+  border-radius: 50%;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.event-comment-avatar-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.public-profile-main .public-profile-status {
+  margin-bottom: 0.75rem;
+}
+
+.public-profile-content {
+  transition: opacity var(--motion-duration-short) ease;
+}
+
+.public-profile-content.is-hidden {
+  display: none;
+}
+
+.public-profile-hero-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.public-profile-avatar-xl.user-result-avatar {
+  width: 88px;
+  height: 88px;
+  font-size: 2rem;
+}
+
+.public-profile-heading {
+  margin: 0 0 0.25rem;
+  font-size: 1.65rem;
+}
+
+.public-profile-bio.is-empty {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.profile-detail-label {
+  font-weight: 700;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 0.35rem;
+}
+
+.public-profile-hobbies-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.public-profile-events-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+}
+
+.public-profile-events-list a {
+  color: var(--color-primary-dark);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.public-profile-events-list a:hover {
+  text-decoration: underline;
+}
+
+body.reduce-animations .event-details-attendee-link,
+body.a11y-reduce-motion .event-details-attendee-link {
+  transition: none;
 }

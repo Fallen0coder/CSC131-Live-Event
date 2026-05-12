@@ -763,14 +763,53 @@ app.get("/api/users/search", async (req, res) => {
     // the spec asks for. .lean() returns plain JS objects (faster, and
     // skips the toJSON transform we don't need here).
     const matches = await User.find({ usernameLower: pattern })
-      .select("username displayName profilePicture bio -_id")
+      .select(
+        "username displayName profilePicture profilePictureType bio school location hobbies -_id"
+      )
       .limit(20)
       .lean();
 
-    res.json(matches);
+    res.json(matches.map(publicProfile));
   } catch (err) {
     console.error("GET /api/users/search failed:", err);
     res.status(500).json({ error: "User search failed." });
+  }
+});
+
+// GET /api/users/:username
+// Public profile for any user (no email / role / password).
+// Also returns events they created (creatorUsername match, case-insensitive).
+//
+// Registered immediately after /api/users/search so "search" is not captured
+// as a :username.
+app.get("/api/users/:username", async (req, res) => {
+  try {
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const user = await findUserByUsername(lower);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const uname = typeof user.username === "string" ? user.username : "";
+    const esc = uname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const createdEvents = await Event.find({
+      creatorUsername: new RegExp("^" + esc + "$", "i"),
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({
+      user: publicProfile(user),
+      eventsCreated: createdEvents.map(shapePublicEvent),
+    });
+  } catch (err) {
+    console.error("GET /api/users/:username failed:", err);
+    res.status(500).json({ error: "Could not load user profile." });
   }
 });
 
@@ -878,6 +917,74 @@ app.put("/api/profile/:username/picture", async (req, res) => {
   }
 });
 
+// PUT /api/profile/:username/details
+// Body: { name?, displayName?, bio?, school?, location?, hobbies? }
+// Persists text profile fields so they appear on public profiles.
+// Same case-insensitive username matching as GET/PUT picture.
+const MAX_PROFILE_HOBBIES = 32;
+const MAX_BIO_LEN = 2000;
+
+app.put("/api/profile/:username/details", async (req, res) => {
+  try {
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const user = await findUserByUsername(lower);
+    if (!user) {
+      return res.status(404).json({ error: "User not found." });
+    }
+
+    const body = req.body || {};
+
+    if (typeof body.name === "string") {
+      const n = body.name.trim();
+      if (n === "") {
+        return res.status(400).json({ error: "Name cannot be empty." });
+      }
+      user.name = n;
+    }
+
+    if (typeof body.displayName === "string") {
+      user.displayName = body.displayName.trim().slice(0, 120);
+    }
+
+    if (typeof body.bio === "string") {
+      user.bio = body.bio.trim().slice(0, MAX_BIO_LEN);
+    }
+
+    if (typeof body.school === "string") {
+      user.school = body.school.trim().slice(0, 120);
+    }
+
+    if (typeof body.location === "string") {
+      user.location = body.location.trim().slice(0, 120);
+    }
+
+    if (body.hobbies !== undefined) {
+      if (!Array.isArray(body.hobbies)) {
+        return res.status(400).json({ error: "hobbies must be an array of strings." });
+      }
+      const cleaned = body.hobbies
+        .map((h) => (typeof h === "string" ? h.trim() : ""))
+        .filter((h) => h !== "")
+        .slice(0, MAX_PROFILE_HOBBIES);
+      user.hobbies = cleaned;
+    }
+
+    await user.save();
+
+    res.json({
+      message: "Profile updated.",
+      user: safeUser(user),
+    });
+  } catch (err) {
+    console.error("PUT /api/profile/:username/details failed:", err);
+    res.status(500).json({ error: "Could not update profile." });
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Friend request helpers
 // ---------------------------------------------------------------------------
@@ -900,14 +1007,25 @@ async function findUserByUsername(lowerUsername) {
   return User.findOne({ usernameLower: lowerUsername });
 }
 
-// Builds the safe public profile payload we return for friend-related routes.
-// Never includes passwords, emails, or other private fields.
+// Builds the safe public profile payload we return for friend-related routes,
+// user search, and GET /api/users/:username. Never includes passwords or email.
 function publicProfile(user) {
+  const u = user && typeof user.toObject === "function" ? user.toObject() : user || {};
+  const hobbies = Array.isArray(u.hobbies) ? u.hobbies : [];
+  const displayName = u.displayName || "";
+  const name = u.name || "";
   return {
-    username: user.username,
-    displayName: user.displayName || "",
-    profilePicture: user.profilePicture || "",
-    bio: user.bio || "",
+    username: u.username,
+    name,
+    displayName,
+    fullName: displayName || name,
+    profilePicture: u.profilePicture || "",
+    profilePictureType: u.profilePictureType || "default",
+    bio: u.bio || "",
+    school: u.school || "",
+    location: u.location || "",
+    hobbies,
+    interests: hobbies,
   };
 }
 
@@ -1022,18 +1140,15 @@ app.get("/api/friends/requests/:username", async (req, res) => {
     const senders = await User.find({
       usernameLower: { $in: senderUsernames },
     })
-      .select("username displayName profilePicture bio usernameLower -_id")
+      .select(
+        "username name displayName profilePicture profilePictureType bio school location hobbies usernameLower -_id"
+      )
       .lean();
 
     // Build a lookup map: lowercased username → safe public profile.
     const senderMap = new Map();
     senders.forEach((s) => {
-      senderMap.set(s.usernameLower, {
-        username: s.username,
-        displayName: s.displayName || "",
-        profilePicture: s.profilePicture || "",
-        bio: s.bio || "",
-      });
+      senderMap.set(s.usernameLower, publicProfile(s));
     });
 
     const enriched = requests.map((r) => ({
@@ -1044,9 +1159,14 @@ app.get("/api/friends/requests/:username", async (req, res) => {
       // Public sender info if the user still exists; safe defaults otherwise.
       sender: senderMap.get(r.senderUsername) || {
         username: r.senderUsername,
+        name: "",
         displayName: "",
         profilePicture: "",
+        profilePictureType: "default",
         bio: "",
+        school: "",
+        location: "",
+        hobbies: [],
       },
     }));
 
@@ -1218,11 +1338,13 @@ app.get("/api/friends/:username", async (req, res) => {
     const friends = await User.find({
       usernameLower: { $in: friendUsernames },
     })
-      .select("username displayName profilePicture bio -_id")
+      .select(
+        "username name displayName profilePicture profilePictureType bio school location hobbies -_id"
+      )
       .lean();
 
     // Map to the safe public shape (in case any extra fields slipped in).
-    res.json(friends.map(publicProfile));
+    res.json(friends.map((f) => publicProfile(f)));
   } catch (err) {
     console.error("GET /api/friends/:username failed:", err);
     res.status(500).json({ error: "Could not load friends." });
@@ -1431,19 +1553,26 @@ app.get("/api/rsvps/event/:eventId", async (req, res) => {
     const rsvps = await RSVP.find({ eventId }).lean();
     const count = rsvps.length;
 
-    const first3UserIds = rsvps.slice(0, 3).map((r) => r.userId);
-    const users = await User.find({ _id: { $in: first3UserIds } })
-      .select("profilePicture profilePictureType")
+    const userIds = rsvps.map((r) => r.userId);
+    const users = await User.find({ _id: { $in: userIds } })
+      .select(
+        "username name displayName profilePicture profilePictureType -_id"
+      )
       .lean();
 
-    // Preserve the insertion order of the first 3 RSVPs (find() with $in
-    // can return documents in any order, so we reorder via a map).
     const userMap = new Map(users.map((u) => [u._id.toString(), u]));
-    const attendees = first3UserIds.map((uid) => {
-      const u = userMap.get(uid.toString());
+    const attendees = rsvps.map((r) => {
+      const u = userMap.get(r.userId.toString());
+      const displayName =
+        u && (u.displayName || u.name)
+          ? String(u.displayName || u.name).trim()
+          : "";
       return {
-        profilePicture: u ? u.profilePicture || "" : "",
-        profilePictureType: u ? u.profilePictureType || "default" : "default",
+        username: u && u.username ? u.username : "",
+        displayName,
+        profilePicture: u && u.profilePicture ? u.profilePicture : "",
+        profilePictureType:
+          u && u.profilePictureType === "uploaded" ? "uploaded" : "default",
       };
     });
 
@@ -1523,18 +1652,18 @@ app.get("/api/rsvps/:username", async (req, res) => {
 // settings actions. Includes `role` so the frontend knows whether to show
 // admin-only controls. NEVER includes the password (or its hash).
 function safeUser(user) {
+  const hobbies = Array.isArray(user.hobbies) ? user.hobbies : [];
   return {
     id: user.id,
     name: user.name,
     username: user.username,
     email: user.email,
     role: user.role || "user",
-    // Profile picture fields. We always send both so the frontend can
-    // render the avatar correctly without an extra request:
-    //   - profilePicture: either a default avatar id/name, or a Base64
-    //     image string when the user uploaded their own picture.
-    //   - profilePictureType: "default" or "uploaded" — tells the
-    //     frontend which kind of value `profilePicture` is.
+    displayName: user.displayName || "",
+    bio: user.bio || "",
+    school: user.school || "",
+    location: user.location || "",
+    hobbies,
     profilePicture: user.profilePicture || "",
     profilePictureType: user.profilePictureType || "default",
   };
@@ -1989,17 +2118,55 @@ app.get("/api/conversations/:username", async (req, res) => {
       { $sort: { lastMessageAt: -1 } },
     ]);
 
-    // Shape the response to a clean array.
+    const rows = conversations.map((c) => ({
+      partner: c._id,
+      lastMessage: {
+        text: c.lastMessageText,
+        createdAt: c.lastMessageAt,
+        senderUsername: c.lastMessageSender,
+        read: c.lastMessageRead,
+      },
+    }));
+
+    const partnerKeys = [
+      ...new Set(
+        rows
+          .map((r) => normalizeUsername(String(r.partner || "")))
+          .filter(Boolean)
+      ),
+    ];
+
+    let profileByLower = new Map();
+    if (partnerKeys.length > 0) {
+      const partnerUsers = await User.find({
+        usernameLower: { $in: partnerKeys },
+      }).lean();
+      profileByLower = new Map(
+        partnerUsers.map((u) => {
+          const lower =
+            u.usernameLower || normalizeUsername(u.username) || "";
+          return [lower, publicProfile(u)];
+        })
+      );
+    }
+
     res.json(
-      conversations.map((c) => ({
-        partner: c._id,
-        lastMessage: {
-          text: c.lastMessageText,
-          createdAt: c.lastMessageAt,
-          senderUsername: c.lastMessageSender,
-          read: c.lastMessageRead,
-        },
-      }))
+      rows.map((r) => {
+        const lower = normalizeUsername(String(r.partner || ""));
+        const partnerProfile =
+          profileByLower.get(lower) ||
+          ({
+            username: r.partner,
+            name: "",
+            displayName: "",
+            fullName: "",
+            profilePicture: "",
+            profilePictureType: "default",
+            hobbies: [],
+            interests: [],
+          });
+        return { ...r, partnerProfile };
+      })
     );
   } catch (err) {
     console.error("GET /api/conversations/:username failed:", err);

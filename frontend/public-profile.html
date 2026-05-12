@@ -1,0 +1,77 @@
+<!--
+  public-profile.html — read-only member profile (deep link: ?username=)
+  Data: GET /api/users/:username — no email shown. Friend button uses POST /api/friends/request.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Event - Member profile</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <script src="early-init.js"></script>
+
+  <header class="navbar">
+    <div class="container nav-content">
+      <h1 class="logo">Live Event</h1>
+      <nav>
+        <ul class="nav-links">
+          <li><a href="index.html" class="nav-link--home">Home</a></li>
+          <li><a href="events.html" class="nav-link--events">Events</a></li>
+          <li id="profile-link" class="is-hidden"><a href="profile.html" class="nav-link--profile">Profile</a></li>
+          <li id="friends-link" class="is-hidden"><a href="friends.html" class="nav-link--friends">Friends</a></li>
+          <li id="login-link"><a href="login.html" class="nav-link--login">Login</a></li>
+          <li><a href="settings.html" class="nav-link--settings">Settings</a></li>
+          <li><a href="about.html" class="nav-link--about">About Us</a></li>
+          <li id="nav-logout-li" class="is-hidden">
+            <button type="button" id="nav-logout-btn" class="nav-logout-btn nav-link--logout">Log out</button>
+          </li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="profile-main public-profile-main" id="public-profile-root">
+    <div class="container profile-layout">
+      <p id="public-profile-status" class="settings-message public-profile-status" role="status" aria-live="polite"></p>
+
+      <div id="public-profile-content" class="public-profile-content is-hidden">
+        <section class="profile-card-block public-profile-hero-card" aria-label="Profile header">
+          <div id="public-profile-avatar" class="public-profile-avatar-xl" aria-hidden="true"></div>
+          <div class="public-profile-hero-text">
+            <h2 id="public-profile-display-name" class="public-profile-heading">Member</h2>
+            <p id="public-profile-username" class="profile-display-username"></p>
+            <p id="public-profile-bio" class="public-profile-bio"></p>
+          </div>
+        </section>
+
+        <section class="profile-card-block" aria-labelledby="public-meta-heading">
+          <h3 id="public-meta-heading">Details</h3>
+          <p id="public-profile-school"><span class="profile-detail-label">School</span> <span id="public-profile-school-val"></span></p>
+          <p id="public-profile-location"><span class="profile-detail-label">Location</span> <span id="public-profile-location-val"></span></p>
+        </section>
+
+        <section class="profile-card-block is-hidden" id="public-profile-hobbies-block" aria-labelledby="public-hobbies-heading">
+          <h3 id="public-hobbies-heading">Interests</h3>
+          <div id="public-profile-hobbies" class="public-profile-hobbies-grid"></div>
+        </section>
+
+        <section class="profile-card-block" id="public-profile-friend-block" aria-labelledby="public-friend-heading">
+          <h3 id="public-friend-heading">Connect</h3>
+          <p id="public-profile-friend-msg" class="settings-message" role="status"></p>
+          <button type="button" id="public-profile-friend-btn" class="btn btn-primary is-hidden"></button>
+        </section>
+
+        <section class="profile-card-block" aria-labelledby="public-events-heading">
+          <h3 id="public-events-heading">Events they created</h3>
+          <ul id="public-profile-events-list" class="public-profile-events-list"></ul>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
