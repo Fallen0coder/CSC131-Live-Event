@@ -6430,13 +6430,6 @@ function bindToggleToLocalStorage(elementId, storageKey, defaultValue, onChange)
   });
 }
 
-// Notifications (the original three + the three new ones)
-bindToggleToLocalStorage("notif-email", "liveEventNotifEmail", true);
-bindToggleToLocalStorage("notif-reminders", "liveEventNotifReminders", true);
-bindToggleToLocalStorage("notif-friend-invites", "liveEventNotifFriendInvites", true);
-bindToggleToLocalStorage("notif-rsvp-updates", "liveEventNotifRsvpUpdates", true);
-bindToggleToLocalStorage("notif-nearby", "liveEventNotifNearby", false);
-
 // Privacy
 bindToggleToLocalStorage("privacy-public-profile", "liveEventPrivacyPublicProfile", true);
 bindToggleToLocalStorage("privacy-show-hobbies", "liveEventPrivacyShowHobbies", true);
@@ -6794,14 +6787,10 @@ const clearPrefsBtn = document.getElementById("clear-prefs-btn");
 const downloadDataBtn = document.getElementById("download-data-btn");
 const toolsMessage = document.getElementById("tools-message");
 
-// Keys related to user preferences (NOT login or profile data).
+// Keys related to user preferences cleared by "Clear saved preferences" (NOT login or profile data).
+// Omit notification/email keys — those toggles were removed; stray old keys remain harmless until user clears prefs.
 const PREFERENCE_KEYS = [
   LIVE_EVENT_THEME_KEY,
-  "liveEventNotifEmail",
-  "liveEventNotifReminders",
-  "liveEventNotifFriendInvites",
-  "liveEventNotifRsvpUpdates",
-  "liveEventNotifNearby",
   "liveEventPrivacyPublicProfile",
   "liveEventPrivacyShowHobbies",
   "liveEventPrivacyShowAttended",
@@ -6814,7 +6803,7 @@ const PREFERENCE_KEYS = [
 if (clearPrefsBtn && toolsMessage) {
   clearPrefsBtn.addEventListener("click", function () {
     const ok = confirm(
-      "Reset theme, notifications, privacy, and accessibility settings to their defaults?"
+      "Reset theme, privacy, and accessibility settings to their defaults?"
     );
     if (!ok) return;
     PREFERENCE_KEYS.forEach(function (key) {

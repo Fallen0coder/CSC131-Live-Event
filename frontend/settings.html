@@ -2,8 +2,8 @@
   settings.html — USER / APP PREFERENCES + ACCOUNT RISK ZONE
   ---------------------------------------------------------------------------
   Sections:
-    • Theme + notifications/privacy/accessibility toggles persist via localStorage
-      (paired with script.js TOP + accordion wiring + early-init hydration).
+    • Theme + privacy + accessibility toggles persist via localStorage
+      (paired with script.js accordion wiring + early-init hydration).
     • Password change / account deletion bubble to authenticated backend routes.
 
   Each `.settings-card` pairs a header button + body for progressive disclosure UX.
@@ -75,79 +75,6 @@
               </button>
             </div>
             <p class="settings-hint" id="theme-status" role="status" aria-live="polite"></p>
-          </div>
-        </article>
-
-        <!-- ——— Notifications ——— -->
-        <article class="settings-card is-collapsed" aria-labelledby="notifications-heading">
-          <button
-            type="button"
-            class="settings-card-header"
-            aria-expanded="false"
-            aria-controls="notifications-body"
-          >
-            <div class="settings-card-header-text">
-              <h3 id="notifications-heading">Notifications</h3>
-              <p class="settings-card-subtitle">Pick what you want to hear about.</p>
-            </div>
-            <span class="settings-card-chevron" aria-hidden="true">▾</span>
-          </button>
-          <div class="settings-card-body" id="notifications-body">
-
-            <div class="toggle-row">
-              <div>
-                <p class="toggle-title">Email notifications</p>
-                <p class="toggle-subtitle">General updates and announcements.</p>
-              </div>
-              <label class="toggle-switch">
-                <input id="notif-email" type="checkbox" class="toggle-input" />
-                <span class="toggle-slider" aria-hidden="true"></span>
-              </label>
-            </div>
-
-            <div class="toggle-row">
-              <div>
-                <p class="toggle-title">Event reminders</p>
-                <p class="toggle-subtitle">Heads-up before events you RSVP to.</p>
-              </div>
-              <label class="toggle-switch">
-                <input id="notif-reminders" type="checkbox" class="toggle-input" />
-                <span class="toggle-slider" aria-hidden="true"></span>
-              </label>
-            </div>
-
-            <div class="toggle-row">
-              <div>
-                <p class="toggle-title">Friend invites</p>
-                <p class="toggle-subtitle">Alerts when friends invite you to an event.</p>
-              </div>
-              <label class="toggle-switch">
-                <input id="notif-friend-invites" type="checkbox" class="toggle-input" />
-                <span class="toggle-slider" aria-hidden="true"></span>
-              </label>
-            </div>
-
-            <div class="toggle-row">
-              <div>
-                <p class="toggle-title">RSVP updates</p>
-                <p class="toggle-subtitle">Time/location changes for events you RSVP'd to.</p>
-              </div>
-              <label class="toggle-switch">
-                <input id="notif-rsvp-updates" type="checkbox" class="toggle-input" />
-                <span class="toggle-slider" aria-hidden="true"></span>
-              </label>
-            </div>
-
-            <div class="toggle-row">
-              <div>
-                <p class="toggle-title">New events near me</p>
-                <p class="toggle-subtitle">Tell me about new events in my area.</p>
-              </div>
-              <label class="toggle-switch">
-                <input id="notif-nearby" type="checkbox" class="toggle-input" />
-                <span class="toggle-slider" aria-hidden="true"></span>
-              </label>
-            </div>
           </div>
         </article>
 
