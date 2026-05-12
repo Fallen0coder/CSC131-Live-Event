@@ -25,6 +25,7 @@
 //
 // Naming you can cite in Q&A without opening the file deeply:
 //   refreshNavAuthVisibility — shows/hides nav items + Add Event by login state
+//   refreshNavProfileAvatar — profile tab shows live avatar from user cache + API
 //   getCurrentUser / setCurrentUser / logout — auth client state
 //   createEventCard, sendRsvp, openEventDetailsModal, openEditEventModal — events UX
 //
@@ -177,6 +178,8 @@ function getCurrentUser() {
 function setCurrentUser(user) {
   localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user));
   localStorage.setItem(LOGGED_IN_KEY, "true");
+  // Keep the navbar profile chip in sync whenever auth/user cache changes.
+  refreshNavProfileAvatar();
 }
 
 // Returns true if the logged-in user is an admin (per the cached role on
@@ -234,16 +237,22 @@ function refreshNavLogoutVisibility() {
 document.addEventListener("DOMContentLoaded", function () {
   // Navbar auth state sync (runs on every HTML page — safe no-op missing elements).
   refreshNavAuthVisibility();
+  // Profile tab: show real avatar from cached user, then refresh from API if logged in.
+  refreshNavProfileAvatar();
+  if (isLoggedIn()) {
+    fetchNavProfilePictureForNavbar();
+  }
   const navLogoutBtn = document.getElementById("nav-logout-btn");
   if (navLogoutBtn) {
     navLogoutBtn.addEventListener("click", logout);
   }
 });
 
-// Keep nav in sync if another tab logs in/out.
+// Keep nav in sync if another tab logs in/out or updates the cached user.
 window.addEventListener("storage", function (event) {
-  if (event.key === LOGGED_IN_KEY) {
+  if (event.key === LOGGED_IN_KEY || event.key === CURRENT_USER_KEY) {
     refreshNavAuthVisibility();
+    refreshNavProfileAvatar();
   }
 });
 
@@ -2430,7 +2439,9 @@ document.addEventListener("DOMContentLoaded", function () {
           fullName: user.name,
           username: user.username,
           email: user.email,
-          role: user.role || "user"
+          role: user.role || "user",
+          profilePicture: user.profilePicture || "",
+          profilePictureType: user.profilePictureType || "default",
         });
         localStorage.setItem("username", user.username);
 
@@ -2567,7 +2578,9 @@ document.addEventListener("DOMContentLoaded", function () {
           fullName: user.name,
           username: user.username,
           email: user.email,
-          role: user.role || "user"
+          role: user.role || "user",
+          profilePicture: user.profilePicture || "",
+          profilePictureType: user.profilePictureType || "default",
         });
         localStorage.setItem("username", user.username);
 
@@ -2673,8 +2686,141 @@ function getDefaultAvatar(id) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Navbar "Profile" tab — small circular avatar (uploaded, emoji, or letter).
+// Runs on every page via refreshNavProfileAvatar(); setCurrentUser() keeps it
+// in sync when login or profile picture changes.
+// ---------------------------------------------------------------------------
+
+/** Same rule as event-card avatars: only allow real image data URLs. */
+function isSafeProfilePictureDataUrl(s) {
+  return typeof s === "string" && /^data:image\/.+;base64,/i.test(s.trim());
+}
+
+/** First letter for the fallback disc (matches profile header behavior). */
+function navProfileInitialLetter(user) {
+  var source = (user && (user.fullName || user.username)) || "U";
+  var ch = String(source).trim().charAt(0);
+  return (ch || "U").toUpperCase();
+}
+
+/**
+ * Turn the profile nav link into: [thumb] + "Profile" label (once).
+ * The thumb node is what we update when the picture changes.
+ */
+function ensureNavProfileThumb(anchor) {
+  var thumb = anchor.querySelector(".nav-profile-thumb");
+  if (thumb) return thumb;
+
+  var label = (anchor.textContent || "").trim() || "Profile";
+  anchor.textContent = "";
+
+  thumb = document.createElement("span");
+  thumb.className = "nav-profile-thumb";
+  thumb.setAttribute("aria-hidden", "true");
+
+  var textSpan = document.createElement("span");
+  textSpan.className = "nav-profile-thumb-label";
+  textSpan.textContent = label;
+
+  anchor.appendChild(thumb);
+  anchor.appendChild(textSpan);
+  return thumb;
+}
+
+function refreshNavProfileAvatar() {
+  var profileA = document.querySelector("#profile-link a.nav-link--profile");
+  if (!profileA) return;
+
+  if (!isLoggedIn()) {
+    return;
+  }
+
+  var user = getCurrentUser();
+  if (!user) {
+    return;
+  }
+
+  var thumb = ensureNavProfileThumb(profileA);
+  thumb.removeAttribute("style");
+  thumb.className = "nav-profile-thumb";
+  thumb.innerHTML = "";
+
+  var pic = (user.profilePicture && String(user.profilePicture).trim()) || "";
+  var picType =
+    (user.profilePictureType && String(user.profilePictureType).trim()) ||
+    "default";
+
+  if (picType === "uploaded" && pic && isSafeProfilePictureDataUrl(pic)) {
+    thumb.classList.add("nav-profile-thumb--uploaded");
+    var img = document.createElement("img");
+    img.className = "nav-profile-thumb-img";
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.src = pic;
+    thumb.appendChild(img);
+    return;
+  }
+
+  if (picType === "default" && pic) {
+    var def = getDefaultAvatar(pic);
+    if (def) {
+      thumb.classList.add("nav-profile-thumb--emoji");
+      var em = document.createElement("span");
+      em.className = "nav-profile-thumb-emoji";
+      em.textContent = def.emoji;
+      thumb.appendChild(em);
+      return;
+    }
+  }
+
+  thumb.classList.add("nav-profile-thumb--fallback");
+  thumb.textContent = navProfileInitialLetter(user);
+}
+
 // Same host as other fetch calls in this file (absolute URL works with file:// opens too).
 var PROFILE_API_URL = "https://csc131-live-event.onrender.com/api/profile";
+
+/**
+ * Pull the latest picture from Mongo so the navbar matches the server after
+ * refresh, login on another device, etc. Skipped on profile.html where the
+ * profile section already runs the same GET.
+ */
+function fetchNavProfilePictureForNavbar() {
+  var user = getCurrentUser();
+  if (!user || !user.username) return;
+  if (document.querySelector(".profile-main")) return;
+
+  var url =
+    PROFILE_API_URL + "/" + encodeURIComponent(user.username);
+
+  fetch(url)
+    .then(function (resp) {
+      if (!resp.ok) return null;
+      return resp.json();
+    })
+    .then(function (data) {
+      if (!data || !data.user) return;
+      var current = getCurrentUser();
+      if (!current) return;
+      var serverName = data.user.username || "";
+      var localName = current.username || "";
+      if (
+        serverName &&
+        localName &&
+        serverName.toLowerCase() !== localName.toLowerCase()
+      ) {
+        return;
+      }
+      current.profilePicture = data.user.profilePicture || "";
+      current.profilePictureType = data.user.profilePictureType || "default";
+      setCurrentUser(current);
+    })
+    .catch(function (err) {
+      console.warn("GET /api/profile (navbar sync) failed:", err);
+    });
+}
 
 function friendlyFetchErrorMessage(err) {
   var looksNetwork =
@@ -2842,6 +2988,9 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     renderAvatarGrid();
     renderHeaderAvatar(loadProfile());
+    // Navbar uses localStorage via getCurrentUser() — update immediately
+    // so the small profile icon matches (rolled back in .catch on error).
+    syncPictureToCurrentUser(pictureState);
     setAvatarMessage("Saving\u2026", "info");
     if (avatarGridEl) avatarGridEl.classList.add("is-saving");
 
@@ -2893,6 +3042,7 @@ document.addEventListener("DOMContentLoaded", function () {
       .catch(function (err) {
         console.error("PUT /api/profile/:username/picture failed:", err);
         pictureState = previousState;
+        syncPictureToCurrentUser(previousState);
         renderAvatarGrid();
         renderHeaderAvatar(loadProfile());
         setAvatarMessage(friendlyFetchErrorMessage(err), "error");
@@ -2967,6 +3117,7 @@ document.addEventListener("DOMContentLoaded", function () {
           err
         );
         pictureState = previousState;
+        syncPictureToCurrentUser(previousState);
         renderAvatarGrid();
         renderHeaderAvatar(loadProfile());
         setAvatarMessage(friendlyFetchErrorMessage(err), "error");
@@ -3036,6 +3187,7 @@ document.addEventListener("DOMContentLoaded", function () {
       };
       renderAvatarGrid();
       renderHeaderAvatar(loadProfile());
+      syncPictureToCurrentUser(pictureState);
 
       saveUploadedAvatar(current.username, base64, previousState, input);
     };
