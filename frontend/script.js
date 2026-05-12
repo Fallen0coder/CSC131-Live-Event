@@ -4658,6 +4658,38 @@ document.addEventListener("DOMContentLoaded", function () {
     groupChatMessagesEl.scrollTop = groupChatMessagesEl.scrollHeight;
   }
 
+  function appendGroupChatMessageBubble(msg) {
+    if (!groupChatMessagesEl || !msg) return;
+    var emptyState = groupChatMessagesEl.querySelector(".chat-empty");
+    if (emptyState) emptyState.remove();
+
+    var myLower = String(myUsername).toLowerCase();
+    var isMine = String(msg.senderUsername || "").toLowerCase() === myLower;
+    var bubble = document.createElement("div");
+    bubble.className =
+      "chat-bubble" +
+      (isMine ? " chat-bubble--sent" : " chat-bubble--received");
+
+    var senderEl = document.createElement("span");
+    senderEl.className = "chat-bubble-sender";
+    senderEl.textContent = isMine ? "You" : "@" + (msg.senderUsername || "?");
+    bubble.appendChild(senderEl);
+
+    var textEl = document.createElement("p");
+    textEl.className = "chat-bubble-text";
+    textEl.textContent = msg.text || "";
+    bubble.appendChild(textEl);
+
+    var timeEl = document.createElement("time");
+    timeEl.className = "chat-bubble-time group-chat-bubble-time";
+    timeEl.dateTime = msg.createdAt ? String(msg.createdAt) : "";
+    timeEl.textContent = formatGroupMessageTimestamp(msg.createdAt);
+    bubble.appendChild(timeEl);
+
+    groupChatMessagesEl.appendChild(bubble);
+    groupChatMessagesEl.scrollTop = groupChatMessagesEl.scrollHeight;
+  }
+
   function loadGroupChatMessages() {
     if (!groupChatMessagesEl || !activeGroupChat) return;
     groupChatMessagesEl.innerHTML =
