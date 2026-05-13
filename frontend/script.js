@@ -4651,11 +4651,51 @@ document.addEventListener("DOMContentLoaded", function () {
   // -------------------------------------------------------------------------
   // 1) MY FRIENDS
   // -------------------------------------------------------------------------
+  // One link wraps avatar + text so the hit target is large; Message / Remove
+  // stay separate buttons (no nested anchors, no accidental navigation).
+  function buildFriendProfileHitbox(profile) {
+    const hit = document.createElement("a");
+    hit.className = "friend-card-profile-hitbox";
+    const un =
+      profile && profile.username ? String(profile.username).trim() : "";
+    hit.href = un ? getPublicProfilePageUrl(un) : "public-profile.html";
+
+    const avatar = document.createElement("div");
+    fillUserAvatarFromProfile(avatar, profile);
+    hit.appendChild(avatar);
+
+    const info = document.createElement("div");
+    info.className = "user-result-info";
+
+    const name = document.createElement("p");
+    name.className = "user-result-name";
+    var displayLabel =
+      profile.displayName && String(profile.displayName).trim() !== ""
+        ? profile.displayName
+        : profile.username || "Friend";
+    name.textContent = displayLabel;
+    info.appendChild(name);
+
+    const handle = document.createElement("p");
+    handle.className = "user-result-handle";
+    handle.textContent = un ? "@" + un : "";
+    info.appendChild(handle);
+
+    if (profile.bio && String(profile.bio).trim() !== "") {
+      const bio = document.createElement("p");
+      bio.className = "user-result-bio";
+      bio.textContent = profile.bio;
+      info.appendChild(bio);
+    }
+
+    hit.appendChild(info);
+    return hit;
+  }
+
   function buildFriendCard(friend) {
     const card = document.createElement("article");
     card.className = "user-result-card friend-card";
-    card.appendChild(buildAvatar(friend));
-    card.appendChild(buildInfoBlock(friend));
+    card.appendChild(buildFriendProfileHitbox(friend));
 
     var actions = document.createElement("div");
     actions.className = "user-result-actions friend-actions";
@@ -7465,14 +7505,15 @@ document.addEventListener("DOMContentLoaded", function () {
 // ===========================================================================
 // PUBLIC PROFILE PAGE (public-profile.html?username=)
 // ---------------------------------------------------------------------------
-// Loads GET /api/users/:username and offers friend request when logged in.
+// Loads GET /api/users/profile/:username (explicit path, JSON-only) and wires
+// the friend-request button when someone is logged in.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   var root = document.getElementById("public-profile-root");
   if (!root) return;
 
-  var API_USERS_BASE =
-    LIVE_EVENT_API_BASE + "/users";
+  var PUBLIC_PROFILE_API_BASE =
+    LIVE_EVENT_API_BASE + "/users/profile";
   var API_FRIENDS_BASE =
     LIVE_EVENT_API_BASE + "/friends";
   var FRIEND_POST_URL =
@@ -7492,6 +7533,36 @@ document.addEventListener("DOMContentLoaded", function () {
   var friendBtn = document.getElementById("public-profile-friend-btn");
   var friendMsg = document.getElementById("public-profile-friend-msg");
   var eventsList = document.getElementById("public-profile-events-list");
+
+  /** Map GET /api/users/profile/:username JSON into avatar + field shape renderPublicProfile expects. */
+  function normalizePublicProfilePayload(body) {
+    if (!body || typeof body !== "object") return null;
+    var pic =
+      typeof body.profilePicture === "string"
+        ? body.profilePicture.trim()
+        : "";
+    var ppt = "default";
+    if (
+      pic &&
+      typeof isSafeProfilePictureDataUrl === "function" &&
+      isSafeProfilePictureDataUrl(pic)
+    ) {
+      ppt = "uploaded";
+    }
+    var interests = Array.isArray(body.interests) ? body.interests.slice() : [];
+    return {
+      displayName:
+        typeof body.displayName === "string" ? body.displayName : "",
+      username: typeof body.username === "string" ? body.username : "",
+      profilePicture: pic,
+      profilePictureType: ppt,
+      bio: typeof body.bio === "string" ? body.bio : "",
+      school: typeof body.school === "string" ? body.school : "",
+      location: typeof body.location === "string" ? body.location : "",
+      hobbies: interests,
+      interests: interests,
+    };
+  }
 
   var params = new URLSearchParams(window.location.search || "");
   var viewedUsername = (params.get("username") || "").trim();
@@ -7758,10 +7829,15 @@ document.addEventListener("DOMContentLoaded", function () {
   setStatus("Loading profile\u2026", "info");
 
   var profilePromise = fetchLiveEventJson(
-    API_USERS_BASE + "/" + encodeURIComponent(viewedUsername),
-    "GET /api/users/:username"
+    PUBLIC_PROFILE_API_BASE +
+      "/" +
+      encodeURIComponent(viewedUsername),
+    "GET /api/users/profile/:username"
   ).then(function (result) {
     if (!result.ok) {
+      if (result.status === 404) {
+        throw new Error("User profile not found.");
+      }
       var msg =
         (result.data &&
           (result.data.message ||
@@ -7774,7 +7850,16 @@ document.addEventListener("DOMContentLoaded", function () {
       );
       throw new Error(msg);
     }
-    return result.data;
+    var normalized = normalizePublicProfilePayload(result.data);
+    if (!normalized || !normalized.username) {
+      throw new Error("User profile not found.");
+    }
+    var eventsCreated =
+      result.data &&
+      Array.isArray(result.data.eventsCreated)
+        ? result.data.eventsCreated
+        : [];
+    return { profile: normalized, eventsCreated: eventsCreated };
   });
 
   var friendsPromise = Promise.resolve(null);
@@ -7790,19 +7875,24 @@ document.addEventListener("DOMContentLoaded", function () {
 
   Promise.all([profilePromise, friendsPromise])
     .then(function (pair) {
-      var payload = pair[0];
+      var bundle = pair[0];
       myFriendsList = Array.isArray(pair[1]) ? pair[1] : [];
       setStatus("", "");
-      renderPublicProfile(payload.user, payload.eventsCreated);
+      renderPublicProfile(bundle.profile, bundle.eventsCreated);
     })
     .catch(function (err) {
       console.error("[public-profile] load failed", err);
-      var msg =
-        err && err.isHtmlResponse
-          ? "Profile route not found. Check backend API."
-          : err && err.message
-            ? err.message
-            : "Could not load profile.";
+      var msg;
+      if (err && err.isHtmlResponse) {
+        msg =
+          "Could not reach the Live Event API (the server replied with a web page instead of JSON). " +
+          "If you opened this site from Live Server or another static host, make sure the Node backend is running " +
+          "(for example http://localhost:3000) and that your browser can reach it.";
+      } else if (err && err.message) {
+        msg = err.message;
+      } else {
+        msg = "Could not load profile.";
+      }
       setStatus(msg, "error");
     });
 });

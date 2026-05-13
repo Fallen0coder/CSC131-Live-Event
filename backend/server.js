@@ -871,6 +871,59 @@ app.get("/api/users/search", async (req, res) => {
   }
 });
 
+// GET /api/users/profile/:username
+// Public member snapshot for public-profile.html (?username=)
+// Explicit `/profile/` segment keeps routing deterministic (avoid proxies mistaking `/api/users/<name>` for a static asset).
+// Username match is case-insensitive (normalizeUsername + usernameLower).
+// Returns ONLY safe JSON fields (+ eventsCreated summaries so the page can list "Events they created"):
+//   displayName, username, profilePicture, bio, school, location, interests, eventsCreated
+app.get("/api/users/profile/:username", async (req, res) => {
+  try {
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const user = await findUserByUsername(lower);
+    if (!user) {
+      return res.status(404).json({ error: "User profile not found." });
+    }
+
+    const u = user && typeof user.toObject === "function" ? user.toObject() : user;
+    const displayName =
+      u.displayName && String(u.displayName).trim() !== ""
+        ? String(u.displayName).trim()
+        : u.name && String(u.name).trim() !== ""
+          ? String(u.name).trim()
+          : "";
+    const interests = Array.isArray(u.hobbies) ? u.hobbies : [];
+
+    const uname = typeof u.username === "string" ? u.username : "";
+    const esc = uname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const createdEvents = await Event.find({
+      creatorUsername: new RegExp("^" + esc + "$", "i"),
+    })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    res.json({
+      displayName,
+      username: uname,
+      profilePicture:
+        typeof u.profilePicture === "string" ? u.profilePicture : "",
+      bio: typeof u.bio === "string" ? u.bio : "",
+      school: typeof u.school === "string" ? u.school : "",
+      location: typeof u.location === "string" ? u.location : "",
+      interests,
+      eventsCreated: createdEvents.map(shapePublicEvent),
+    });
+  } catch (err) {
+    console.error("GET /api/users/profile/:username failed:", err);
+    res.status(500).json({ error: "Could not load user profile." });
+  }
+});
+
 // GET /api/users/:username
 // Public profile for any user (no email / role / password).
 // Also returns events they created (creatorUsername match, case-insensitive).

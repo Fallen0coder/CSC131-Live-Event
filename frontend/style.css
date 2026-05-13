@@ -3125,6 +3125,40 @@ body.is-editing-profile .profile-display-only {
   align-items: stretch;
 }
 
+/* My Friends: avatar + name block links to public profile; buttons stay outside */
+.friend-card-profile-hitbox {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  flex: 1 1 8rem;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  border-radius: calc(var(--radius-md) - 4px);
+  padding: 0.15rem 0.35rem;
+  margin: -0.15rem -0.35rem;
+  transition: background-color 0.15s ease;
+}
+
+.friend-card-profile-hitbox:hover {
+  background: rgba(37, 99, 235, 0.06);
+}
+
+.friend-card-profile-hitbox:focus {
+  outline: none;
+}
+
+.friend-card-profile-hitbox:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+body.theme-dark .friend-card-profile-hitbox:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+
 .friend-loading,
 .friend-empty {
   text-align: center;

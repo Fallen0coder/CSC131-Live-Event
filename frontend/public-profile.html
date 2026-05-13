@@ -1,6 +1,7 @@
 <!--
   public-profile.html — read-only member profile (deep link: ?username=)
-  Data: GET /api/users/:username — no email shown. Friend button uses POST /api/friends/request.
+  Data: GET /api/users/profile/:username — safe public fields + events they created.
+        Friend actions use POST /api/friends/request.
 -->
 <!DOCTYPE html>
 <html lang="en">
