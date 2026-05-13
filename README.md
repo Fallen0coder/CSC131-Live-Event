@@ -1,6 +1,6 @@
 # 🎉 Live Event Web App
 
-## 🌐 Live Demo
+## 🌐 Live Deployment
 
 [(https://liveevent2026.netlify.app/index.html)]
 
@@ -49,6 +49,7 @@ The Live Event Web App is a full-stack web application designed to help college 
 ### Cloud Platform
 
 * Render (used for hosting the Node.js backend API and deploying the Live Event web application)
+* Netlify (used for deploying and hosting the frontend website)
 
 ---
 
