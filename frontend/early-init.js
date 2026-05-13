@@ -21,22 +21,22 @@
     var body = document.body;
     if (!body) return;
 
-    /* ① Theme mirrors Settings — body.theme-dark swaps entire palette via CSS vars */
+    /* 1 Theme mirrors Settings — body.theme-dark swaps entire palette via CSS vars */
     var theme = localStorage.getItem("liveEventTheme") || "light";
     body.classList.toggle("theme-dark", theme === "dark");
 
-    /* ② Motion reductions — BOTH classes exist for backwards-compatible selectors */
+    /* 2 Motion reductions — BOTH classes exist for backwards-compatible selectors */
     var reduceMotion = localStorage.getItem("liveEventA11yReduceMotion") === "true";
     body.classList.toggle("reduce-animations", reduceMotion);
     body.classList.toggle("a11y-reduce-motion", reduceMotion);
 
-    /* ③ Optional larger base font scale */
+    /* 3 Optional larger base font scale */
     body.classList.toggle(
       "a11y-large-text",
       localStorage.getItem("liveEventA11yLargeText") === "true"
     );
 
-    /* ④ High-contrast palette adjustments */
+    /* 4 High-contrast palette adjustments */
     body.classList.toggle(
       "a11y-high-contrast",
       localStorage.getItem("liveEventA11yHighContrast") === "true"
