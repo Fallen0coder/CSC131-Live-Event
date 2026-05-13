@@ -1,10 +1,12 @@
 <!--
   public-profile.html — read-only member profile (deep link: ?username=)
-  Data: GET /api/users/profile/:username — safe public fields + events they created.
-        Friend actions use POST /api/friends/request.
+  Data (absolute URL only):
+    ${API_BASE_URL}/api/users/profile/:username — from script.js; API_BASE_URL
+    comes from <html data-live-event-api-origin> below (fallback: *.netlify.app → Render).
+  Friend actions: POST /api/friends/request.
 -->
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-live-event-api-origin="https://csc131-live-event.onrender.com">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />

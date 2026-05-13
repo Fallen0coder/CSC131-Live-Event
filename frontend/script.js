@@ -8,7 +8,7 @@
 //       run unconditionally or via tiny DOM guards.
 //   • Page-specific flows (events grid, login form, friends list):
 //       wrapped in DOMContentLoaded + `if (!element) return`.
-//   • Backend communication: REST via fetch(LIVE_EVENT_API_BASE + "/...")
+//   • Backend communication: REST uses API_BASE_URL + "/api/…" (see LIVE_EVENT_API_BASE)
 //     for real data (events, auth, RSVPs, friends, messages, profile picture).
 //   • Client caching: login session + prefs + draft profile extras live in
 //     localStorage (see AUTH HELPERS keys + PROFILE_KEY notes).
@@ -107,32 +107,71 @@ applyA11ySettings();
 // ---------------------------------------------------------------------------
 // API + Socket base URL
 // ---------------------------------------------------------------------------
-// Live Server / file:// must call Express on http://localhost:3000.
-// When the HTML is served from the same host as Express (:3000), use that origin.
+// `API_BASE_URL` is ONLY the deployed Express origin (no `/api` suffix).
+// NEVER use Netlify/front-end origin here when the site is static — Netlify
+// rewrites can turn `/api/...` into HTML, so fetch would get a page shell.
+//
+// Typical pattern elsewhere: API_BASE_URL + "/api/events", etc.
+// Public profile MUST use:
+//   `${API_BASE_URL}/api/users/profile/${username}`   ← absolute HTTPS URL only
+//
+// Override (optional): set data-live-event-api-origin on <html> in public-profile.html (or body).
+//
+// Matches socket.io (`io(API_BASE_URL)`) so realtime + REST hit the same host.
 // ---------------------------------------------------------------------------
-var LIVE_EVENT_API_ORIGIN = (function () {
+var DEFAULT_LIVE_EVENT_API_BASE_URL =
+  "https://csc131-live-event.onrender.com";
+
+/** Absolute backend origin, e.g. https://…..onrender.com (no trailing slash, no `/api`). */
+var API_BASE_URL = (function resolveLiveEventApiBaseUrl() {
   if (typeof window === "undefined") {
-    return "https://csc131-live-event.onrender.com";
+    return DEFAULT_LIVE_EVENT_API_BASE_URL;
   }
   try {
+    var fromHtml =
+      document.documentElement &&
+      document.documentElement.getAttribute("data-live-event-api-origin");
+    if (typeof fromHtml === "string") {
+      var t = fromHtml.trim();
+      if (t !== "") return t.replace(/\/+$/, "");
+    }
+    var fromBody =
+      document.body &&
+      document.body.getAttribute &&
+      document.body.getAttribute("data-live-event-api-origin");
+    if (typeof fromBody === "string") {
+      var tb = fromBody.trim();
+      if (tb !== "") return tb.replace(/\/+$/, "");
+    }
+
     if (window.location.protocol === "file:") {
       return "http://localhost:3000";
     }
-    var h = window.location.hostname;
-    if (h === "localhost" || h === "127.0.0.1") {
+
+    var hostname = window.location.hostname || "";
+
+    /* Netlify (and previews) serve static markup; `/api/*` must not hit Netlify unless proxied */
+    if (/\.netlify\.app$/i.test(hostname)) {
+      return DEFAULT_LIVE_EVENT_API_BASE_URL;
+    }
+
+    if (hostname === "localhost" || hostname === "127.0.0.1") {
       if (String(window.location.port) === "3000") {
-        return window.location.origin;
+        return String(window.location.origin).replace(/\/+$/, "");
       }
       return "http://localhost:3000";
     }
-  } catch (e) {
-    /* ignore */
+  } catch (err) {
+    /* ignore DOM access edge cases */
   }
-  return "https://csc131-live-event.onrender.com";
+  return DEFAULT_LIVE_EVENT_API_BASE_URL;
 })();
 
-/** Prefix for every REST path, e.g. GET /events → LIVE_EVENT_API_BASE + "/events" */
-var LIVE_EVENT_API_BASE = LIVE_EVENT_API_ORIGIN + "/api";
+/** Alias for older comments / socket connects — same meaning as API_BASE_URL. */
+var LIVE_EVENT_API_ORIGIN = API_BASE_URL;
+
+/** Prefix for REST paths (`/events`, `/login`, …) — NEVER use a bare `/api/...` fetch on Netlify. */
+var LIVE_EVENT_API_BASE = API_BASE_URL + "/api";
 
 /**
  * fetch() + read body as text; parse JSON only when Content-Type or body looks like JSON.
@@ -7512,8 +7551,13 @@ document.addEventListener("DOMContentLoaded", function () {
   var root = document.getElementById("public-profile-root");
   if (!root) return;
 
-  var PUBLIC_PROFILE_API_BASE =
-    LIVE_EVENT_API_BASE + "/users/profile";
+  /** Same host as LIVE_EVENT_API_BASE but spelled out per course spec (`${API_BASE_URL}/api/...`). */
+  function publicProfileAbsoluteUrl(username) {
+    return (
+      API_BASE_URL + "/api/users/profile/" + encodeURIComponent(username || "")
+    );
+  }
+
   var API_FRIENDS_BASE =
     LIVE_EVENT_API_BASE + "/friends";
   var FRIEND_POST_URL =
@@ -7828,10 +7872,11 @@ document.addEventListener("DOMContentLoaded", function () {
 
   setStatus("Loading profile\u2026", "info");
 
+  var profileFetchUrl = publicProfileAbsoluteUrl(viewedUsername);
+  console.log("[public-profile] Fetching:", profileFetchUrl);
+
   var profilePromise = fetchLiveEventJson(
-    PUBLIC_PROFILE_API_BASE +
-      "/" +
-      encodeURIComponent(viewedUsername),
+    profileFetchUrl,
     "GET /api/users/profile/:username"
   ).then(function (result) {
     if (!result.ok) {
