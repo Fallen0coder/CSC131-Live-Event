@@ -5096,6 +5096,51 @@ body.theme-dark .event-comments-loading {
   min-height: 28px;
 }
 
+/* Opens the RSVP roster modal — entire row acts as one control */
+.event-attendees-row--interactive {
+  cursor: pointer;
+  flex-wrap: wrap;
+  row-gap: 0.35rem;
+  padding: 0.35rem 0.35rem;
+  margin-left: -0.35rem;
+  margin-right: -0.35rem;
+  border-radius: var(--radius-md, 0.75rem);
+  border: 1px solid transparent;
+  transition:
+    background-color var(--motion-duration-short) ease,
+    border-color var(--motion-duration-short) ease,
+    box-shadow var(--motion-duration-short) ease;
+}
+
+.event-attendees-row--interactive:hover {
+  background: var(--color-primary-soft);
+  border-color: rgba(92, 103, 242, 0.18);
+}
+
+.event-attendees-row--interactive:focus {
+  outline: none;
+}
+
+.event-attendees-row--interactive:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  background: var(--color-primary-soft);
+}
+
+body.theme-dark .event-attendees-row--interactive:hover {
+  border-color: rgba(129, 140, 248, 0.28);
+}
+
+/* Small stack avatars on cards (not links — modal shows full list) */
+.event-avatar-stack .event-avatar--stack {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: inherit;
+  background: var(--color-primary-soft);
+}
+
 .event-avatar-stack {
   display: flex;
   align-items: center;
@@ -5138,6 +5183,52 @@ body.theme-dark .event-avatar {
 body.theme-dark .event-avatar-overflow,
 body.theme-dark .event-attendees-count {
   color: #9ca3af;
+}
+
+/* People going modal — full RSVP list opened from the card row */
+.people-going-window {
+  max-width: 420px;
+  width: min(92vw, 420px);
+}
+
+.people-going-body {
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+}
+
+.people-going-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.people-going-row {
+  border-radius: 12px;
+}
+
+.people-going-empty,
+.people-going-loading,
+.people-going-error {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.people-going-error {
+  color: #b91c1c;
+}
+
+body.theme-dark .people-going-empty,
+body.theme-dark .people-going-loading {
+  color: #9ca3af;
+}
+
+body.theme-dark .people-going-error {
+  color: #fca5a5;
 }
 
 /* ===========================================================================

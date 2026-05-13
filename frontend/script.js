@@ -678,6 +678,9 @@ document.addEventListener("DOMContentLoaded", function () {
   // Used to fetch the attendee count + first 3 profile pictures for each
   // event card's avatar stack. See loadEventAttendees() below.
   const RSVPS_EVENT_API_URL = LIVE_EVENT_API_BASE + "/rsvps/event";
+  // Full RSVP list when the user opens the "People going" modal (card row click).
+  // GET /api/events/:eventId/rsvps returns public username/displayName/profilePicture only.
+  const EVENT_PEOPLE_GOING_API_URL = LIVE_EVENT_API_BASE + "/events";
   // Event discussion threads — backed by MongoDB (see server.js comments routes).
   const EVENT_COMMENTS_API_URL = LIVE_EVENT_API_BASE + "/events";
   const DELETE_COMMENT_API_URL = LIVE_EVENT_API_BASE + "/comments";
@@ -920,6 +923,7 @@ document.addEventListener("DOMContentLoaded", function () {
           } else {
             showEventsBanner("You RSVP\u2019d to this event!", "success");
           }
+          refreshEventCardAttendees(rsvpButton, event);
           return;
         }
 
@@ -934,6 +938,7 @@ document.addEventListener("DOMContentLoaded", function () {
             "You\u2019re already RSVP\u2019d to this event.",
             "info"
           );
+          refreshEventCardAttendees(rsvpButton, event);
           return;
         }
 
@@ -982,6 +987,7 @@ document.addEventListener("DOMContentLoaded", function () {
             eventsCacheRsvpedIds.delete(event.id);
           }
           showEventsBanner("Your RSVP was canceled.", "success");
+          refreshEventCardAttendees(rsvpButton, event);
           return;
         }
 
@@ -1019,13 +1025,16 @@ document.addEventListener("DOMContentLoaded", function () {
 
   // Build and inject the attendee avatar stack into an existing card element.
   // `data` is the JSON body returned by GET /api/rsvps/event/:eventId.
+  // Avatars use <span>s (not links) — the entire row opens the modal list.
   function renderAttendeesRow(container, data) {
     if (!container) return;
     var count = (data && typeof data.count === "number") ? data.count : 0;
     var attendees = (data && Array.isArray(data.attendees)) ? data.attendees : [];
 
+    // Always leave the row clickable (even when 0 RSVP) so users can confirm the empty state.
     if (count === 0) {
-      container.innerHTML = "";
+      container.innerHTML =
+        "<span class='event-attendees-count'>" + "0 going" + "</span>";
       return;
     }
 
@@ -1034,10 +1043,6 @@ document.addEventListener("DOMContentLoaded", function () {
     for (var i = 0; i < maxDots; i++) {
       var a = attendees[i];
       var uname = a && a.username ? String(a.username).trim() : "";
-      var href = uname ? getPublicProfilePageUrl(uname).replace(/'/g, "%27") : "#";
-      var titleAttr = uname
-        ? " title='" + escapeHtmlPublic("@" + uname).replace(/'/g, "&#39;") + "'"
-        : "";
       var inner = "";
       if (
         a &&
@@ -1075,13 +1080,9 @@ document.addEventListener("DOMContentLoaded", function () {
           "</span>";
       }
       stackHtml +=
-        "<a class='event-avatar event-avatar--link' href='" +
-        href +
-        "'" +
-        titleAttr +
-        ">" +
+        "<span class='event-avatar event-avatar--stack'>" +
         inner +
-        "</a>";
+        "</span>";
     }
     stackHtml += "</div>";
 
@@ -1113,11 +1114,23 @@ document.addEventListener("DOMContentLoaded", function () {
         return response.json();
       })
       .then(function (data) {
-        if (data) renderAttendeesRow(row, data);
+        if (data) {
+          renderAttendeesRow(row, data);
+        } else {
+          renderAttendeesRow(row, { count: 0, attendees: [] });
+        }
       })
       .catch(function (err) {
         console.warn("Could not load attendees for event " + eventId + ":", err);
+        renderAttendeesRow(row, { count: 0, attendees: [] });
       });
+  }
+
+  // After RSVP save/cancel, re-fetch the card's mini attendee strip + count.
+  function refreshEventCardAttendees(rsvpButton, event) {
+    if (!rsvpButton || !event || !event.id) return;
+    var card = rsvpButton.closest(".event-card");
+    if (card) loadEventAttendees(card, event.id);
   }
 
   // Factory for one `<article class='event-card'>` DOM node (+ wiring).
@@ -1209,9 +1222,17 @@ document.addEventListener("DOMContentLoaded", function () {
         "</p>";
     }
 
-    // Attendee avatar stack — populated asynchronously by loadEventAttendees()
-    // after the card is appended to the DOM.
-    html += "<div class='event-attendees-row'></div>";
+    // Attendee row — populated asynchronously by loadEventAttendees().
+    // When the card has an id, the row is keyboard-focusable and opens the full RSVP list modal.
+    if (event.id) {
+      html +=
+        "<div class='event-attendees-row event-attendees-row--interactive'" +
+        " data-event-id='" +
+        escapeHtml(event.id) +
+        "' role='button' tabindex='0' aria-label='View people going to this event'></div>";
+    } else {
+      html += "<div class='event-attendees-row'></div>";
+    }
 
     html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
@@ -1398,6 +1419,148 @@ document.addEventListener("DOMContentLoaded", function () {
   const detailsOverlay = document.getElementById("event-details-overlay");
   const detailsBody = document.getElementById("event-details-body");
   const detailsCloseBtn = document.getElementById("event-details-close-btn");
+
+  // "People going" modal — full RSVP list for one event (#people-going-overlay).
+  const peopleGoingOverlay = document.getElementById("people-going-overlay");
+  const peopleGoingBody = document.getElementById("people-going-body");
+  const peopleGoingCloseBtn = document.getElementById("people-going-close-btn");
+
+  // GET /api/events/:id/rsvps returns username, displayName, profilePicture only.
+  // Infer uploaded vs default avatars without a stored `profilePictureType` flag.
+  function attendeeFromPeopleGoingApi(a) {
+    var pic = a && a.profilePicture ? String(a.profilePicture).trim() : "";
+    var profilePictureType = "default";
+    if (pic && isSafeProfilePictureDataUrl(pic)) {
+      profilePictureType = "uploaded";
+    }
+    return {
+      username: a && a.username ? String(a.username).trim() : "",
+      displayName: a && a.displayName ? String(a.displayName).trim() : "",
+      profilePicture: pic,
+      profilePictureType: profilePictureType,
+    };
+  }
+
+  function renderPeopleGoingModalBody(attendees) {
+    if (!peopleGoingBody) return;
+    peopleGoingBody.innerHTML = "";
+    var wrap = document.createElement("div");
+    wrap.className = "people-going-inner";
+
+    if (!attendees || attendees.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "people-going-empty";
+      empty.textContent = "No one has RSVP\u2019d yet.";
+      wrap.appendChild(empty);
+      peopleGoingBody.appendChild(wrap);
+      return;
+    }
+
+    var list = document.createElement("ul");
+    list.className = "people-going-list";
+    list.setAttribute("aria-label", "Users who RSVP'd");
+
+    attendees.forEach(function (raw) {
+      var profile = attendeeFromPeopleGoingApi(raw);
+      var li = document.createElement("li");
+      var link = document.createElement("a");
+      link.className = "people-going-row event-details-attendee-link";
+      link.href = getPublicProfilePageUrl(profile.username);
+      var av = document.createElement("div");
+      fillUserAvatarFromProfile(av, profile);
+      link.appendChild(av);
+      var text = document.createElement("div");
+      text.className = "event-details-attendee-text";
+      var nameEl = document.createElement("span");
+      nameEl.className = "event-details-attendee-name";
+      var disp = profile.displayName !== "" ? profile.displayName : "";
+      nameEl.textContent =
+        disp !== ""
+          ? disp
+          : profile.username
+            ? profile.username
+            : "Member";
+      var handle = document.createElement("span");
+      handle.className = "event-details-attendee-handle";
+      handle.textContent = profile.username ? "@" + profile.username : "";
+      text.appendChild(nameEl);
+      text.appendChild(handle);
+      link.appendChild(text);
+      li.appendChild(link);
+      list.appendChild(li);
+    });
+
+    wrap.appendChild(list);
+    peopleGoingBody.appendChild(wrap);
+  }
+
+  function closePeopleGoingModal() {
+    if (!peopleGoingOverlay || !peopleGoingBody) return;
+    peopleGoingOverlay.classList.add("is-hidden");
+    peopleGoingBody.innerHTML = "";
+  }
+
+  function openPeopleGoingModal(eventId) {
+    if (!peopleGoingOverlay || !peopleGoingBody || !eventId) return;
+
+    peopleGoingBody.innerHTML =
+      "<p class='people-going-loading'>Loading\u2026</p>";
+    peopleGoingOverlay.classList.remove("is-hidden");
+    peopleGoingBody.scrollTop = 0;
+
+    setTimeout(function () {
+      if (peopleGoingCloseBtn) peopleGoingCloseBtn.focus();
+    }, 0);
+
+    fetch(
+      EVENT_PEOPLE_GOING_API_URL +
+        "/" +
+        encodeURIComponent(eventId) +
+        "/rsvps"
+    )
+      .then(function (response) {
+        if (!response.ok) throw new Error("Request failed");
+        return response.json();
+      })
+      .then(function (body) {
+        var list =
+          body && Array.isArray(body.attendees) ? body.attendees : [];
+        renderPeopleGoingModalBody(list);
+      })
+      .catch(function () {
+        peopleGoingBody.innerHTML =
+          "<p class='people-going-error'>Could not load the list. Please try again.</p>";
+      });
+  }
+
+  if (peopleGoingCloseBtn) {
+    peopleGoingCloseBtn.addEventListener("click", closePeopleGoingModal);
+  }
+  if (peopleGoingOverlay) {
+    peopleGoingOverlay.addEventListener("click", function (clickEvent) {
+      if (clickEvent.target === peopleGoingOverlay) {
+        closePeopleGoingModal();
+      }
+    });
+  }
+
+  if (eventsContainer) {
+    eventsContainer.addEventListener("click", function (ev) {
+      var row = ev.target.closest(".event-attendees-row--interactive");
+      if (!row || !eventsContainer.contains(row)) return;
+      var evtId = row.getAttribute("data-event-id");
+      if (!evtId) return;
+      openPeopleGoingModal(evtId);
+    });
+    eventsContainer.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" && ev.key !== " ") return;
+      var row = ev.target.closest(".event-attendees-row--interactive");
+      if (!row || !eventsContainer.contains(row)) return;
+      ev.preventDefault();
+      var evtId = row.getAttribute("data-event-id");
+      if (evtId) openPeopleGoingModal(evtId);
+    });
+  }
 
   // Build the inner HTML of the modal body for one event. All user-
   // supplied text passes through escapeHtml() and the image src is
@@ -1980,10 +2143,18 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
-  // Escape key closes the details modal — only when it's actually open
-  // and only when the edit modal isn't already taking the key (so we
-  // don't fight with the existing edit-modal handler).
+  // Escape key: close the "People going" modal first, then Event details.
+  // (Edit modal owns its own handler so stacking modals behaves predictably.)
   document.addEventListener("keydown", function (keyEvent) {
+    if (
+      keyEvent.key === "Escape" &&
+      peopleGoingOverlay &&
+      !peopleGoingOverlay.classList.contains("is-hidden")
+    ) {
+      closePeopleGoingModal();
+      keyEvent.preventDefault();
+      return;
+    }
     if (
       keyEvent.key === "Escape" &&
       detailsOverlay &&

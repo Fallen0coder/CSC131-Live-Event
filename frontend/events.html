@@ -8,12 +8,14 @@
     • Primary list GET /api/events
     • RSVP save/cancel POST/DELETE /api/rsvp (+ helpers for “already RSVP'd” prefetch)
     • Attendee previews GET /api/rsvps/event/:id
+    • Full RSVP roster (people-going modal) GET /api/events/:id/rsvps
     • Edit modal PUT /api/events/:id
     • Read-only modal “View Details” mostly uses in-memory row + attendee GET
 
   Modals anchored at bottom of BODY:
     #edit-event-overlay        — PUT flow
     #event-details-overlay     — read-only deep dive (#event-details-body filled by JS)
+    #people-going-overlay      — RSVP roster list for one event (filled by JS)
 
   Assets: style.css, early-init.js, script.js
 -->
@@ -346,6 +348,34 @@
       <div
         id="event-details-body"
         class="modal-body event-details-body"
+      ></div>
+    </div>
+  </div>
+
+  <!--
+    "People going" modal — opens when the user clicks the attendee row on a card.
+    Filled via GET /api/events/:eventId/rsvps (safe public fields only).
+  -->
+  <div
+    id="people-going-overlay"
+    class="modal-overlay is-hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="people-going-title"
+  >
+    <div class="modal-window people-going-window">
+      <header class="modal-header">
+        <h3 id="people-going-title">People going</h3>
+        <button
+          type="button"
+          id="people-going-close-btn"
+          class="modal-close-btn"
+          aria-label="Close people going list"
+        >×</button>
+      </header>
+      <div
+        id="people-going-body"
+        class="modal-body people-going-body"
       ></div>
     </div>
   </div>

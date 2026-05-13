@@ -354,6 +354,55 @@ app.post("/api/events", async (req, res) => {
   }
 });
 
+// GET /api/events/:eventId/rsvps
+// Full list of users who RSVP'd — used when the frontend opens the "People going" modal on a card.
+// Returns only safe public fields per entry: username, displayName, profilePicture (no email/password).
+//
+// Frontend: fetch from events page when the attendee row on a card is clicked.
+app.get("/api/events/:eventId/rsvps", async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ error: "Invalid event id." });
+    }
+
+    const eventExists = await Event.exists({ _id: eventId });
+    if (!eventExists) {
+      return res.status(404).json({ error: "Event not found." });
+    }
+
+    const rsvps = await RSVP.find({ eventId }).sort({ _id: 1 }).lean();
+
+    if (rsvps.length === 0) {
+      return res.json({ attendees: [] });
+    }
+
+    const userIds = rsvps.map((r) => r.userId);
+    const users = await User.find({ _id: { $in: userIds } })
+      .select("username name displayName profilePicture -_id")
+      .lean();
+
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+    const attendees = rsvps.map((r) => {
+      const u = userMap.get(r.userId.toString());
+      const displayName =
+        u && (u.displayName || u.name)
+          ? String(u.displayName || u.name).trim()
+          : "";
+      const username = u && u.username ? String(u.username).trim() : "";
+      const profilePicture =
+        u && typeof u.profilePicture === "string" ? u.profilePicture : "";
+      return { displayName, username, profilePicture };
+    });
+
+    res.json({ attendees });
+  } catch (err) {
+    console.error("GET /api/events/:eventId/rsvps failed:", err);
+    res.status(500).json({ error: "Could not load RSVP list." });
+  }
+});
+
 // =========================
 // EVENT COMMENTS API
 // =========================
