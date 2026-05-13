@@ -96,6 +96,15 @@ const userSchema = new mongoose.Schema({
     default: [],
   },
 
+  // Who can see what on your public profile + messaging (Settings → Privacy).
+  // All flags default to true so existing accounts behave like before until changed.
+  privacy: {
+    publicProfile: { type: Boolean, default: true },
+    showHobbies: { type: Boolean, default: true },
+    showAttendedEvents: { type: Boolean, default: true },
+    allowMessages: { type: Boolean, default: true },
+  },
+
   // Permission level for this user.
   // - "user"  : a normal account (the default for everyone who signs up).
   // - "admin" : unlocked by typing the secret ADMIN_KEY in Settings, which

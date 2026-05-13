@@ -944,6 +944,20 @@ app.get("/api/users/profile/:username", async (req, res) => {
     }
 
     const u = user && typeof user.toObject === "function" ? user.toObject() : user;
+    const privacy = normalizeUserPrivacy(user);
+
+    const uname = typeof u.username === "string" ? u.username : "";
+
+    // When the member turns off "public profile", we still return 200 JSON so the
+    // SPA-style frontend can show a friendly message without treating it like "not found".
+    if (!privacy.publicProfile) {
+      return res.json({
+        username: uname,
+        privacy,
+        profileIsPrivate: true,
+      });
+    }
+
     const displayName =
       u.displayName && String(u.displayName).trim() !== ""
         ? String(u.displayName).trim()
@@ -952,7 +966,6 @@ app.get("/api/users/profile/:username", async (req, res) => {
           : "";
     const interests = Array.isArray(u.hobbies) ? u.hobbies : [];
 
-    const uname = typeof u.username === "string" ? u.username : "";
     const esc = uname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const createdEvents = await Event.find({
       creatorUsername: new RegExp("^" + esc + "$", "i"),
@@ -971,6 +984,8 @@ app.get("/api/users/profile/:username", async (req, res) => {
       location: typeof u.location === "string" ? u.location : "",
       interests,
       eventsCreated: createdEvents.map(shapePublicEvent),
+      privacy,
+      profileIsPrivate: false,
     });
   } catch (err) {
     console.error("GET /api/users/profile/:username failed:", err);
@@ -1209,6 +1224,20 @@ async function findUserByUsername(lowerUsername) {
   return User.findOne({ usernameLower: lowerUsername });
 }
 
+// Normalizes the nested `privacy` object on a User for JSON APIs.
+// Missing fields behave as "true" (same as Mongoose defaults) so older DB rows stay public.
+function normalizeUserPrivacy(user) {
+  const u =
+    user && typeof user.toObject === "function" ? user.toObject() : user || {};
+  const p = u.privacy || {};
+  return {
+    publicProfile: p.publicProfile !== false,
+    showHobbies: p.showHobbies !== false,
+    showAttendedEvents: p.showAttendedEvents !== false,
+    allowMessages: p.allowMessages !== false,
+  };
+}
+
 // Builds the safe public profile payload we return for friend-related routes,
 // user search, and GET /api/users/:username. Never includes passwords or email.
 function publicProfile(user) {
@@ -1228,6 +1257,7 @@ function publicProfile(user) {
     location: u.location || "",
     hobbies,
     interests: hobbies,
+    privacy: normalizeUserPrivacy(user),
   };
 }
 
@@ -1911,6 +1941,20 @@ app.get("/api/rsvps/:username", async (req, res) => {
       return res.status(404).json({ error: "User not found." });
     }
 
+    // Privacy: hide someone else's RSVP list unless they opted in.
+    // Pass ?viewerUsername=<same username> when the logged-in user is fetching their own list.
+    const viewerRaw =
+      typeof req.query.viewerUsername === "string"
+        ? req.query.viewerUsername.trim()
+        : "";
+    const viewerLower = viewerRaw ? normalizeUsername(viewerRaw) : null;
+    const targetPrivacy = normalizeUserPrivacy(user);
+    const viewingOwnList =
+      viewerLower && viewerLower === user.usernameLower;
+    if (!viewingOwnList && !targetPrivacy.showAttendedEvents) {
+      return res.json([]);
+    }
+
     // Step 1: every RSVP this user has made.
     const rsvps = await RSVP.find({ userId: user._id }).lean();
     if (rsvps.length === 0) {
@@ -1963,8 +2007,102 @@ function safeUser(user) {
     hobbies,
     profilePicture: user.profilePicture || "",
     profilePictureType: user.profilePictureType || "default",
+    privacy: normalizeUserPrivacy(user),
   };
 }
+
+// GET /api/settings/privacy/:username
+// Returns Mongo-backed privacy flags for the logged-in account only.
+// Query: requesterUsername OR email — must match the user named in the URL.
+app.get("/api/settings/privacy/:username", async (req, res) => {
+  try {
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const identifier =
+      (typeof req.query.requesterUsername === "string" &&
+        req.query.requesterUsername.trim()) ||
+      (typeof req.query.email === "string" && req.query.email.trim()) ||
+      "";
+
+    if (!identifier) {
+      return res.status(400).json({
+        error:
+          "Please provide requesterUsername or email as a query parameter.",
+      });
+    }
+
+    const requester = await findUserByEmailOrUsername(identifier);
+    const target = await findUserByUsername(lower);
+    if (!target || !requester || requester.usernameLower !== target.usernameLower) {
+      return res
+        .status(403)
+        .json({ error: "You can only view your own privacy settings." });
+    }
+
+    res.json({
+      privacy: normalizeUserPrivacy(target),
+    });
+  } catch (err) {
+    console.error("GET /api/settings/privacy/:username failed:", err);
+    res.status(500).json({ error: "Could not load privacy settings." });
+  }
+});
+
+// PUT /api/settings/privacy/:username
+// Body: { username | email (who is saving), privacy: { ...partial booleans } }
+app.put("/api/settings/privacy/:username", async (req, res) => {
+  try {
+    const lower = normalizeUsername(req.params.username);
+    if (!lower) {
+      return res.status(400).json({ error: "Username is required." });
+    }
+
+    const body = req.body || {};
+    const identifier = body.username || body.email || "";
+    if (!identifier || typeof identifier !== "string") {
+      return res.status(400).json({
+        error: "Please provide username or email in the request body.",
+      });
+    }
+
+    const requester = await findUserByEmailOrUsername(identifier);
+    const user = await findUserByUsername(lower);
+    if (!user || !requester || requester.usernameLower !== user.usernameLower) {
+      return res
+        .status(403)
+        .json({ error: "You can only update your own privacy settings." });
+    }
+
+    const incoming = body.privacy || {};
+    if (!user.privacy) user.privacy = {};
+
+    if (typeof incoming.publicProfile === "boolean") {
+      user.privacy.publicProfile = incoming.publicProfile;
+    }
+    if (typeof incoming.showHobbies === "boolean") {
+      user.privacy.showHobbies = incoming.showHobbies;
+    }
+    if (typeof incoming.showAttendedEvents === "boolean") {
+      user.privacy.showAttendedEvents = incoming.showAttendedEvents;
+    }
+    if (typeof incoming.allowMessages === "boolean") {
+      user.privacy.allowMessages = incoming.allowMessages;
+    }
+
+    await user.save();
+
+    res.json({
+      message: "Privacy settings saved.",
+      privacy: normalizeUserPrivacy(user),
+    });
+  } catch (err) {
+    console.error("PUT /api/settings/privacy/:username failed:", err);
+    res.status(500).json({ error: "Could not save privacy settings." });
+  }
+});
 
 // Helper used by the settings routes below: looks up a user by email OR
 // username. Returns the User document (with password hash) or null.
@@ -2238,9 +2376,8 @@ app.delete("/api/settings/delete-account", async (req, res) => {
 //   - All three fields must be non-empty strings.
 //   - Sender cannot message themselves.
 //   - Both users must exist.
+//   - Receiver must allow messages (privacy.allowMessages on User).
 //   - The two users must already be friends (messaging is friends-only).
-//   - Respects the receiver's "allow messages" preference if stored on the
-//     User document in the future (no-op for now; structure is in place).
 app.post("/api/messages", async (req, res) => {
   try {
     const sender = normalizeUsername(req.body.senderUsername);
@@ -2268,6 +2405,13 @@ app.post("/api/messages", async (req, res) => {
     const receiverUser = await findUserByUsername(receiver);
     if (!receiverUser) {
       return res.status(404).json({ error: "Receiver user not found." });
+    }
+
+    const recvPrivacy = normalizeUserPrivacy(receiverUser);
+    if (!recvPrivacy.allowMessages) {
+      return res.status(403).json({
+        error: "This user does not accept direct messages.",
+      });
     }
 
     // Only friends can message each other.

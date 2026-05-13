@@ -2,7 +2,7 @@
   settings.html — USER / APP PREFERENCES + ACCOUNT RISK ZONE
   ---------------------------------------------------------------------------
   Sections:
-    • Theme + privacy + accessibility toggles persist via localStorage
+    • Theme + accessibility toggles persist via localStorage; privacy syncs to MongoDB
       (paired with script.js accordion wiring + early-init hydration).
     • Password change / account deletion bubble to authenticated backend routes.
 
@@ -137,6 +137,14 @@
                 <span class="toggle-slider" aria-hidden="true"></span>
               </label>
             </div>
+
+            <!-- Shown after toggles sync with MongoDB or after save/error -->
+            <p
+              id="privacy-settings-message"
+              class="settings-message"
+              role="status"
+              aria-live="polite"
+            ></p>
           </div>
         </article>
 

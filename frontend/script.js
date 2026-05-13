@@ -2753,7 +2753,12 @@ document.addEventListener("DOMContentLoaded", function () {
       return Promise.resolve(new Set());
     }
 
-    const url = RSVPS_API_URL + "/" + encodeURIComponent(user.username);
+    const url =
+      RSVPS_API_URL +
+      "/" +
+      encodeURIComponent(user.username) +
+      "?viewerUsername=" +
+      encodeURIComponent(user.username);
 
     return fetch(url)
       .then(function (response) {
@@ -3019,6 +3024,12 @@ document.addEventListener("DOMContentLoaded", function () {
           role: user.role || "user",
           profilePicture: user.profilePicture || "",
           profilePictureType: user.profilePictureType || "default",
+          privacy: user.privacy || {
+            publicProfile: true,
+            showHobbies: true,
+            showAttendedEvents: true,
+            allowMessages: true,
+          },
         });
         localStorage.setItem("username", user.username);
 
@@ -3158,6 +3169,12 @@ document.addEventListener("DOMContentLoaded", function () {
           role: user.role || "user",
           profilePicture: user.profilePicture || "",
           profilePictureType: user.profilePictureType || "default",
+          privacy: user.privacy || {
+            publicProfile: true,
+            showHobbies: true,
+            showAttendedEvents: true,
+            allowMessages: true,
+          },
         });
         localStorage.setItem("username", user.username);
 
@@ -3912,6 +3929,9 @@ document.addEventListener("DOMContentLoaded", function () {
     if (Array.isArray(dataUser.hobbies)) {
       prof.hobbies = dataUser.hobbies.slice();
     }
+    if (dataUser.privacy && typeof dataUser.privacy === "object") {
+      prof.privacy = dataUser.privacy;
+    }
     saveProfile(prof);
   }
 
@@ -4006,13 +4026,6 @@ document.addEventListener("DOMContentLoaded", function () {
           displayHobbies.appendChild(span);
         });
       }
-    }
-
-    // Honor the "show hobbies" privacy toggle (from settings).
-    const showHobbies = localStorage.getItem("liveEventPrivacyShowHobbies");
-    const hobbiesCard = displayHobbies && displayHobbies.closest(".profile-card-block");
-    if (hobbiesCard && showHobbies === "false") {
-      hobbiesCard.style.display = "none";
     }
   }
 
@@ -6638,6 +6651,15 @@ document.addEventListener("DOMContentLoaded", function () {
   renderOutgoing();
   loadGroupChats();
   loadConversations();
+
+  // Optional deep link from public-profile.html ("Message" button): friends.html?openDm=theirUsername
+  (function openDmFromUrlQuery() {
+    var params = new URLSearchParams(window.location.search || "");
+    var raw = (params.get("openDm") || "").trim();
+    if (!raw) return;
+    if (raw.charAt(0) === "@") raw = raw.slice(1);
+    if (raw) openChat(raw);
+  })();
 });
 
 
@@ -6769,7 +6791,12 @@ document.addEventListener("DOMContentLoaded", function () {
     return;
   }
 
-  const url = RSVPS_API_URL + "/" + encodeURIComponent(user.username);
+  const url =
+    RSVPS_API_URL +
+    "/" +
+    encodeURIComponent(user.username) +
+    "?viewerUsername=" +
+    encodeURIComponent(user.username);
 
   fetch(url)
     .then(function (response) {
@@ -6801,10 +6828,8 @@ document.addEventListener("DOMContentLoaded", function () {
 // toggles `.is-collapsed` so CSS hides/show bodies + rotates chevron.
 //
 // Storage split professors love hearing:
-//   • Theme / bell / privacy / accessibility toggles → ONLY localStorage
-//       (wired near top of THIS file via setTheme(), applyA11ySettings(),
-//       etc.) Remember early-init.js re-reads the same keys on every page load
-//       so visuals never flash mismatched preferences.
+//   • Theme + accessibility toggles → localStorage (early-init.js hydrates quickly).
+//   • Privacy toggles → MongoDB via GET/PUT /api/settings/privacy/:username
 //
 // Sensitive operations still hit Mongo:
 //   • Change password POST /api/settings/change-password
@@ -6868,11 +6893,7 @@ function bindToggleToLocalStorage(elementId, storageKey, defaultValue, onChange)
   });
 }
 
-// Privacy
-bindToggleToLocalStorage("privacy-public-profile", "liveEventPrivacyPublicProfile", true);
-bindToggleToLocalStorage("privacy-show-hobbies", "liveEventPrivacyShowHobbies", true);
-bindToggleToLocalStorage("privacy-show-attended", "liveEventPrivacyShowAttended", true);
-bindToggleToLocalStorage("privacy-allow-messages", "liveEventPrivacyAllowMessages", true);
+// Privacy — loaded from MongoDB (see setupPrivacySettingsMongo below).
 
 // Accessibility — we re-apply the body classes whenever they change so the
 // effect is visible immediately.
@@ -6903,6 +6924,170 @@ function showSettingsMessage(element, message, type) {
   if (type === "success") element.classList.add("is-success");
   if (type === "error") element.classList.add("is-error");
 }
+
+// Reads the four privacy checkboxes on settings.html (MongoDB is source of truth).
+function readPrivacyToggleValues() {
+  function checked(id) {
+    var el = document.getElementById(id);
+    return !!(el && el.checked);
+  }
+  return {
+    publicProfile: checked("privacy-public-profile"),
+    showHobbies: checked("privacy-show-hobbies"),
+    showAttendedEvents: checked("privacy-show-attended"),
+    allowMessages: checked("privacy-allow-messages"),
+  };
+}
+
+function applyPrivacyToggleValues(privacy) {
+  if (!privacy || typeof privacy !== "object") return;
+  function setToggle(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.checked = val !== false;
+  }
+  setToggle("privacy-public-profile", privacy.publicProfile);
+  setToggle("privacy-show-hobbies", privacy.showHobbies);
+  setToggle("privacy-show-attended", privacy.showAttendedEvents);
+  setToggle("privacy-allow-messages", privacy.allowMessages);
+}
+
+// Fetch + save privacy settings from the backend (login required).
+(function setupPrivacySettingsMongo() {
+  var msgEl = document.getElementById("privacy-settings-message");
+  var toggleIds = [
+    "privacy-public-profile",
+    "privacy-show-hobbies",
+    "privacy-show-attended",
+    "privacy-allow-messages",
+  ];
+  var hasAnyToggle = toggleIds.some(function (id) {
+    return !!document.getElementById(id);
+  });
+  if (!hasAnyToggle) return;
+
+  var current = getCurrentUser();
+  if (!current || !current.username) {
+    toggleIds.forEach(function (id) {
+      var t = document.getElementById(id);
+      if (t) t.disabled = true;
+    });
+    showSettingsMessage(
+      msgEl,
+      "Log in to sync privacy settings with your account.",
+      "error"
+    );
+    return;
+  }
+
+  var baseUrl =
+    LIVE_EVENT_API_BASE +
+    "/settings/privacy/" +
+    encodeURIComponent(current.username);
+
+  function mergePrivacyIntoStoredUser(privacy) {
+    var u = getCurrentUser();
+    if (!u || !privacy) return;
+    u.privacy = privacy;
+    setCurrentUser(u);
+  }
+
+  function loadPrivacy() {
+    var url =
+      baseUrl +
+      "?requesterUsername=" +
+      encodeURIComponent(current.username);
+    fetchLiveEventJson(url, "GET /api/settings/privacy/:username")
+      .then(function (result) {
+        if (!result.ok) {
+          var err =
+            (result.data &&
+              (result.data.error || result.data.message)) ||
+            "Could not load privacy settings.";
+          throw new Error(err);
+        }
+        var privacy = result.data && result.data.privacy;
+        applyPrivacyToggleValues(privacy || {});
+        mergePrivacyIntoStoredUser(privacy || {});
+        showSettingsMessage(msgEl, "", null);
+      })
+      .catch(function (err) {
+        console.error("Privacy GET failed:", err);
+        applyPrivacyToggleValues({
+          publicProfile: true,
+          showHobbies: true,
+          showAttendedEvents: true,
+          allowMessages: true,
+        });
+        showSettingsMessage(
+          msgEl,
+          (err && err.message) || "Could not load privacy settings.",
+          "error"
+        );
+      });
+  }
+
+  function savePrivacy() {
+    var privacy = readPrivacyToggleValues();
+    showSettingsMessage(msgEl, "Saving\u2026", null);
+    fetch(baseUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: current.username,
+        email: current.email || "",
+        privacy: privacy,
+      }),
+    })
+      .then(function (resp) {
+        return resp.text().then(function (text) {
+          var data = {};
+          try {
+            data = text ? JSON.parse(text) : {};
+          } catch (e) {
+            data = {};
+          }
+          return { ok: resp.ok, status: resp.status, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok) {
+          var saved =
+            result.data && result.data.privacy
+              ? result.data.privacy
+              : privacy;
+          applyPrivacyToggleValues(saved);
+          mergePrivacyIntoStoredUser(saved);
+          showSettingsMessage(
+            msgEl,
+            "Privacy settings saved.",
+            "success"
+          );
+          return;
+        }
+        var errMsg =
+          (result.data && result.data.error) ||
+          "Could not save privacy settings.";
+        throw new Error(errMsg);
+      })
+      .catch(function (err) {
+        console.error("Privacy PUT failed:", err);
+        showSettingsMessage(
+          msgEl,
+          (err && err.message) || "Could not save privacy settings.",
+          "error"
+        );
+        loadPrivacy();
+      });
+  }
+
+  toggleIds.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", savePrivacy);
+  });
+
+  loadPrivacy();
+})();
 
 if (
   passwordForm &&
@@ -7115,6 +7300,7 @@ if (adminKeyForm && adminKeyInput && adminKeySubmitBtn && adminKeyMessage) {
           email: updated.email || current.email,
           id: updated.id || current.id,
           role: updated.role || "admin",
+          privacy: updated.privacy || current.privacy,
         });
         setCurrentUser(merged);
 
@@ -7195,6 +7381,7 @@ if (exitAdminBtn && adminKeyMessage) {
           email: updated.email || current.email,
           id: updated.id || current.id,
           role: updated.role || "user",
+          privacy: updated.privacy || current.privacy,
         });
         setCurrentUser(merged);
 
@@ -7229,10 +7416,6 @@ const toolsMessage = document.getElementById("tools-message");
 // Omit notification/email keys — those toggles were removed; stray old keys remain harmless until user clears prefs.
 const PREFERENCE_KEYS = [
   LIVE_EVENT_THEME_KEY,
-  "liveEventPrivacyPublicProfile",
-  "liveEventPrivacyShowHobbies",
-  "liveEventPrivacyShowAttended",
-  "liveEventPrivacyAllowMessages",
   A11Y_REDUCE_MOTION_KEY,
   A11Y_LARGE_TEXT_KEY,
   A11Y_HIGH_CONTRAST_KEY
@@ -7241,7 +7424,7 @@ const PREFERENCE_KEYS = [
 if (clearPrefsBtn && toolsMessage) {
   clearPrefsBtn.addEventListener("click", function () {
     const ok = confirm(
-      "Reset theme, privacy, and accessibility settings to their defaults?"
+      "Reset theme and accessibility settings to their defaults?"
     );
     if (!ok) return;
     PREFERENCE_KEYS.forEach(function (key) {
@@ -7765,10 +7948,39 @@ document.addEventListener("DOMContentLoaded", function () {
   var friendBtn = document.getElementById("public-profile-friend-btn");
   var friendMsg = document.getElementById("public-profile-friend-msg");
   var eventsList = document.getElementById("public-profile-events-list");
+  var attendingBlock = document.getElementById("public-profile-attending-block");
+  var attendingList = document.getElementById("public-profile-attending-list");
 
   /** Map GET /api/users/profile/:username JSON into avatar + field shape renderPublicProfile expects. */
   function normalizePublicProfilePayload(body) {
     if (!body || typeof body !== "object") return null;
+
+    // Minimal JSON when the member disabled "Public profile" — still includes username + privacy flags.
+    if (body.profileIsPrivate) {
+      var unPriv =
+        typeof body.username === "string" ? body.username : "";
+      if (!unPriv) return null;
+      var pr = body.privacy && typeof body.privacy === "object" ? body.privacy : {};
+      return {
+        username: unPriv,
+        profileIsPrivate: true,
+        privacy: {
+          publicProfile: pr.publicProfile !== false,
+          showHobbies: pr.showHobbies !== false,
+          showAttendedEvents: pr.showAttendedEvents !== false,
+          allowMessages: pr.allowMessages !== false,
+        },
+        displayName: "",
+        profilePicture: "",
+        profilePictureType: "default",
+        bio: "",
+        school: "",
+        location: "",
+        hobbies: [],
+        interests: [],
+      };
+    }
+
     var pic =
       typeof body.profilePicture === "string"
         ? body.profilePicture.trim()
@@ -7782,6 +7994,8 @@ document.addEventListener("DOMContentLoaded", function () {
       ppt = "uploaded";
     }
     var interests = Array.isArray(body.interests) ? body.interests.slice() : [];
+    var privacyRaw =
+      body.privacy && typeof body.privacy === "object" ? body.privacy : {};
     return {
       displayName:
         typeof body.displayName === "string" ? body.displayName : "",
@@ -7793,6 +8007,13 @@ document.addEventListener("DOMContentLoaded", function () {
       location: typeof body.location === "string" ? body.location : "",
       hobbies: interests,
       interests: interests,
+      profileIsPrivate: false,
+      privacy: {
+        publicProfile: privacyRaw.publicProfile !== false,
+        showHobbies: privacyRaw.showHobbies !== false,
+        showAttendedEvents: privacyRaw.showAttendedEvents !== false,
+        allowMessages: privacyRaw.allowMessages !== false,
+      },
     };
   }
 
@@ -7823,8 +8044,16 @@ document.addEventListener("DOMContentLoaded", function () {
   var viewedUser = null;
   var myFriendsList = null;
 
-  function renderPublicProfile(user, eventsCreated) {
+  function renderPublicProfile(user, eventsCreated, eventsAttending) {
     viewedUser = user;
+
+    // Full profile hidden — only the status line explains why.
+    if (!user || user.profileIsPrivate) {
+      if (contentEl) contentEl.classList.add("is-hidden");
+      wireFriendButton();
+      return;
+    }
+
     if (contentEl) contentEl.classList.remove("is-hidden");
     if (avatarEl) {
       fillUserAvatarFromProfile(avatarEl, user);
@@ -7859,6 +8088,10 @@ document.addEventListener("DOMContentLoaded", function () {
           ? user.location
           : "—";
     }
+
+    var privacy = user.privacy || {};
+    var showHobbiesPublic = privacy.showHobbies !== false;
+
     var hobbies = Array.isArray(user.hobbies) ? user.hobbies : [];
     if (
       hobbies.length === 0 &&
@@ -7868,7 +8101,7 @@ document.addEventListener("DOMContentLoaded", function () {
       hobbies = user.interests;
     }
     if (hobbiesBlock && hobbiesEl) {
-      if (hobbies.length === 0) {
+      if (!showHobbiesPublic || hobbies.length === 0) {
         hobbiesBlock.classList.add("is-hidden");
       } else {
         hobbiesBlock.classList.remove("is-hidden");
@@ -7881,6 +8114,7 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       }
     }
+
     if (eventsList) {
       eventsList.innerHTML = "";
       var evs = Array.isArray(eventsCreated) ? eventsCreated : [];
@@ -7902,7 +8136,64 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     }
 
+    // RSVP'd / attending — only when this member allows others to see it.
+    var showAttendedPublic = privacy.showAttendedEvents !== false;
+    if (attendingBlock && attendingList) {
+      if (!showAttendedPublic) {
+        attendingBlock.classList.add("is-hidden");
+      } else {
+        attendingBlock.classList.remove("is-hidden");
+        attendingList.innerHTML = "";
+        var att = Array.isArray(eventsAttending) ? eventsAttending : [];
+        if (att.length === 0) {
+          var liE = document.createElement("li");
+          liE.className = "public-profile-events-empty";
+          liE.textContent = "No RSVP\u2019d events to show.";
+          attendingList.appendChild(liE);
+        } else {
+          att.forEach(function (ev) {
+            var liA = document.createElement("li");
+            liA.className = "public-profile-event-row";
+            var a2 = document.createElement("a");
+            a2.href = "events.html";
+            a2.textContent = ev.title || "Untitled event";
+            liA.appendChild(a2);
+            attendingList.appendChild(liA);
+          });
+        }
+      }
+    }
+
     wireFriendButton();
+  }
+
+  function updatePublicMessageButton() {
+    var messageBtn = document.getElementById("public-profile-message-btn");
+    if (!messageBtn || !viewedUser || !viewedUser.username) return;
+
+    messageBtn.classList.add("is-hidden");
+    messageBtn.onclick = null;
+
+    if (viewedUser.profileIsPrivate) return;
+
+    var allowMsg =
+      !viewedUser.privacy || viewedUser.privacy.allowMessages !== false;
+
+    var me = getCurrentUser();
+    if (!me || !isLoggedIn() || !me.username) return;
+
+    var myL = String(me.username).toLowerCase();
+    var theirL = String(viewedUser.username).toLowerCase();
+    if (myL === theirL) return;
+
+    if (!allowMsg || !isFriendWithViewed()) return;
+
+    messageBtn.classList.remove("is-hidden");
+    messageBtn.onclick = function () {
+      window.location.href =
+        "friends.html?openDm=" +
+        encodeURIComponent(viewedUser.username);
+    };
   }
 
   function isFriendWithViewed() {
@@ -7919,15 +8210,34 @@ document.addEventListener("DOMContentLoaded", function () {
 
   function wireFriendButton() {
     var me = getCurrentUser();
-    if (!friendBtn || !viewedUser || !viewedUser.username) return;
 
-    friendBtn.classList.add("is-hidden");
-    friendBtn.disabled = false;
+    if (!viewedUser || !viewedUser.username) return;
+
+    if (friendBtn) {
+      friendBtn.classList.add("is-hidden");
+      friendBtn.disabled = false;
+    }
+
+    var messageBtn = document.getElementById("public-profile-message-btn");
+    if (messageBtn) {
+      messageBtn.classList.add("is-hidden");
+      messageBtn.onclick = null;
+    }
+
     setFriendUi("", "");
+
+    // Nothing to connect on a fully private profile.
+    if (viewedUser.profileIsPrivate) {
+      if (friendBlock) friendBlock.classList.add("is-hidden");
+      return;
+    }
+
+    if (!friendBtn) return;
 
     if (!me || !isLoggedIn() || !me.username) {
       if (friendBlock) friendBlock.classList.remove("is-hidden");
       setFriendUi("Log in to send a friend request.", "info");
+      updatePublicMessageButton();
       return;
     }
 
@@ -7938,11 +8248,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
     if (myL === theirL) {
       setFriendUi("This is your profile.", "info");
+      updatePublicMessageButton();
       return;
     }
 
     if (isFriendWithViewed()) {
       setFriendUi("Already friends.", "success");
+      updatePublicMessageButton();
       return;
     }
 
@@ -7961,6 +8273,7 @@ document.addEventListener("DOMContentLoaded", function () {
       friendBtn.onclick = function () {
         cancelPublicFriendRequest(theirL);
       };
+      updatePublicMessageButton();
       return;
     }
 
@@ -7969,6 +8282,7 @@ document.addEventListener("DOMContentLoaded", function () {
     friendBtn.onclick = function () {
       sendPublicFriendRequest();
     };
+    updatePublicMessageButton();
   }
 
   function sendPublicFriendRequest() {
@@ -8092,7 +8406,49 @@ document.addEventListener("DOMContentLoaded", function () {
       Array.isArray(result.data.eventsCreated)
         ? result.data.eventsCreated
         : [];
-    return { profile: normalized, eventsCreated: eventsCreated };
+
+    if (normalized.profileIsPrivate) {
+      return {
+        profile: normalized,
+        eventsCreated: eventsCreated,
+        eventsAttending: [],
+      };
+    }
+
+    var pr = normalized.privacy || {};
+    if (pr.showAttendedEvents === false) {
+      return {
+        profile: normalized,
+        eventsCreated: eventsCreated,
+        eventsAttending: [],
+      };
+    }
+
+    var rsvpUrl =
+      LIVE_EVENT_API_BASE +
+      "/rsvps/" +
+      encodeURIComponent(normalized.username);
+
+    return fetch(rsvpUrl)
+      .then(function (resp) {
+        if (!resp.ok) return [];
+        return resp.json();
+      })
+      .then(function (events) {
+        return {
+          profile: normalized,
+          eventsCreated: eventsCreated,
+          eventsAttending: Array.isArray(events) ? events : [],
+        };
+      })
+      .catch(function (err) {
+        console.error("[public-profile] Could not load RSVP list:", err);
+        return {
+          profile: normalized,
+          eventsCreated: eventsCreated,
+          eventsAttending: [],
+        };
+      });
   });
 
   var friendsPromise = Promise.resolve(null);
@@ -8110,8 +8466,21 @@ document.addEventListener("DOMContentLoaded", function () {
     .then(function (pair) {
       var bundle = pair[0];
       myFriendsList = Array.isArray(pair[1]) ? pair[1] : [];
+
+      if (bundle.profile.profileIsPrivate) {
+        viewedUser = bundle.profile;
+        setStatus("This profile is private.", "info");
+        if (contentEl) contentEl.classList.add("is-hidden");
+        wireFriendButton();
+        return;
+      }
+
       setStatus("", "");
-      renderPublicProfile(bundle.profile, bundle.eventsCreated);
+      renderPublicProfile(
+        bundle.profile,
+        bundle.eventsCreated,
+        bundle.eventsAttending
+      );
     })
     .catch(function (err) {
       console.error("[public-profile] load failed", err);

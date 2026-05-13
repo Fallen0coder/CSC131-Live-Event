@@ -5820,6 +5820,13 @@ body.theme-dark .event-avatar-initial {
   gap: 0.35rem;
 }
 
+.public-profile-connect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
 .public-profile-events-list {
   list-style: none;
   margin: 0.35rem 0 0;

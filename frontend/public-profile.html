@@ -64,12 +64,27 @@
         <section class="profile-card-block" id="public-profile-friend-block" aria-labelledby="public-friend-heading">
           <h3 id="public-friend-heading">Connect</h3>
           <p id="public-profile-friend-msg" class="settings-message" role="status"></p>
-          <button type="button" id="public-profile-friend-btn" class="btn btn-primary is-hidden"></button>
+          <div class="public-profile-connect-actions">
+            <button type="button" id="public-profile-friend-btn" class="btn btn-primary is-hidden"></button>
+            <button type="button" id="public-profile-message-btn" class="btn btn-secondary is-hidden">
+              Message
+            </button>
+          </div>
         </section>
 
         <section class="profile-card-block" aria-labelledby="public-events-heading">
           <h3 id="public-events-heading">Events they created</h3>
           <ul id="public-profile-events-list" class="public-profile-events-list"></ul>
+        </section>
+
+        <!-- RSVP’d events — filled only when profile owner allows it (privacy.showAttendedEvents) -->
+        <section
+          class="profile-card-block is-hidden"
+          id="public-profile-attending-block"
+          aria-labelledby="public-attending-heading"
+        >
+          <h3 id="public-attending-heading">Events they&#8217;re attending</h3>
+          <ul id="public-profile-attending-list" class="public-profile-events-list"></ul>
         </section>
       </div>
     </div>
