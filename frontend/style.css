@@ -5121,13 +5121,18 @@ body.theme-dark .event-comments-loading {
    Small overlapping circular avatars shown below the event creator line.
    Up to 3 avatars are shown; if more people RSVP'd a "+X" overflow badge
    and a "X going" count appear beside them.
+   Preview lives in .event-card-rsvp-preview (not .event-attendees-row — avoids
+   legacy cached bundles that delegated clicks to the old row).
    --------------------------------------------------------------------------- */
-.event-attendees-row {
+.event-card-rsvp-preview {
   display: flex;
   align-items: center;
   gap: 0.45rem;
   margin: 0.35rem 0 0.1rem;
   min-height: 28px;
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Small overlapping avatars inside the attendee row preview */

@@ -1135,11 +1135,11 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Fetch attendee data for a single event and populate its card's
-  // .event-attendees-row placeholder. Silently no-ops on network error so
+  // .event-card-rsvp-preview strip. Silently no-ops on network error so
   // the rest of the card still works fine.
   function loadEventAttendees(card, eventId) {
     if (!card || !eventId) return;
-    var row = card.querySelector(".event-attendees-row");
+    var row = card.querySelector(".event-card-rsvp-preview");
     if (!row) return;
 
     fetch(RSVPS_EVENT_API_URL + "/" + encodeURIComponent(eventId))
@@ -1256,8 +1256,8 @@ document.addEventListener("DOMContentLoaded", function () {
         "</p>";
     }
 
-    // Attendee preview strip + count — populated asynchronously via loadEventAttendees().
-    html += "<div class='event-attendees-row'></div>";
+    // Attendee preview strip + count — display-only (no click handlers).
+    html += "<div class='event-card-rsvp-preview'></div>";
 
     html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
