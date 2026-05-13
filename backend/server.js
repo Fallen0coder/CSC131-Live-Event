@@ -260,10 +260,113 @@ function shapePublicEvent(raw) {
 // Returns every event in the database, newest first.
 // "Newest" means the most recently *created* event (createdAt desc), so a
 // brand-new event a user just submitted shows up at the top of the list.
+//
+// Each event in the response includes two extra fields so the frontend can
+// render the "X going" line + small avatar preview WITHOUT a follow-up fetch:
+//
+//   attendeeCount : number      // total unique RSVPs for this event
+//   attendees     : Array<{ username, fullName, profilePicture, profilePictureType }>
+//                                // up to 3 sample attendees (preview avatars)
+//
+// Why both fields?
+//   - `attendeeCount` is the source of truth for the "N people going" label
+//     so the count shown on the card and inside the View Details modal can
+//     never disagree (they read the same number).
+//   - `attendees` powers the small avatar stack on each card on first paint.
+//     We cap it at 3 to keep the events list payload small. The People Going
+//     modal still loads the FULL guest list from /api/events/:id/attendees.
 app.get("/api/events", async (req, res) => {
   try {
-    const rows = await Event.find().sort({ createdAt: -1 }).lean();
-    res.json(rows.map(shapePublicEvent));
+    // 1. Fetch the raw events first — same query as before so ordering and
+    //    the response shape stay identical for every other field.
+    const events = await Event.find().sort({ createdAt: -1 }).lean();
+    if (events.length === 0) {
+      return res.json([]);
+    }
+
+    // 2. Count RSVPs and collect each event's user ids in ONE aggregation.
+    //    The `$sort` step ensures the preview ids we keep (the first 3) are
+    //    the earliest RSVPs — i.e. the "earliest to say yes" — which is a
+    //    stable, beginner-friendly choice.
+    const eventIds = events.map((e) => e._id);
+    const grouped = await RSVP.aggregate([
+      { $match: { eventId: { $in: eventIds } } },
+      { $sort: { _id: 1 } },
+      {
+        $group: {
+          _id: "$eventId",
+          count: { $sum: 1 },
+          userIds: { $push: "$userId" },
+        },
+      },
+    ]);
+
+    // 3. Batch-look up the preview users (max 3 per event) in ONE round-trip.
+    //    Using `$in` over all preview ids at once is much faster than a loop.
+    const previewIdSet = new Set();
+    grouped.forEach((g) => {
+      const ids = Array.isArray(g.userIds) ? g.userIds.slice(0, 3) : [];
+      ids.forEach((uid) => previewIdSet.add(String(uid)));
+    });
+
+    let userById = new Map();
+    if (previewIdSet.size > 0) {
+      const previewUsers = await User.find({
+        _id: { $in: Array.from(previewIdSet) },
+      })
+        .select("username name displayName profilePicture profilePictureType")
+        .lean();
+      userById = new Map(previewUsers.map((u) => [u._id.toString(), u]));
+    }
+
+    // Helper: shape one preview attendee in the same fields the People Going
+    // modal expects, so the frontend can reuse its normalizer either way.
+    function shapePreviewAttendee(u) {
+      if (!u) return null;
+      const username = typeof u.username === "string" ? u.username.trim() : "";
+      const display =
+        (u.displayName && String(u.displayName).trim()) ||
+        (u.name && String(u.name).trim()) ||
+        "";
+      return {
+        username,
+        displayName: display,
+        fullName: display || username,
+        profilePicture:
+          typeof u.profilePicture === "string" ? u.profilePicture : "",
+        profilePictureType:
+          u.profilePictureType === "uploaded" ? "uploaded" : "default",
+      };
+    }
+
+    // 4. Build a quick lookup: eventId -> { count, attendees: previews[] }.
+    const summaryByEvent = new Map();
+    grouped.forEach((g) => {
+      const ids = Array.isArray(g.userIds) ? g.userIds.slice(0, 3) : [];
+      const previews = ids
+        .map((uid) => shapePreviewAttendee(userById.get(String(uid))))
+        .filter(Boolean);
+      summaryByEvent.set(String(g._id), {
+        count: g.count || 0,
+        attendees: previews,
+      });
+    });
+
+    // 5. Attach `attendeeCount` + `attendees` to every event payload.
+    //    Events with zero RSVPs (no aggregation row) get { 0, [] } defaults
+    //    so the frontend never has to null-check.
+    const out = events.map((e) => {
+      const base = shapePublicEvent(e);
+      const summary = summaryByEvent.get(String(e._id)) || {
+        count: 0,
+        attendees: [],
+      };
+      base.attendeeCount = summary.count;
+      base.attendees = summary.attendees;
+      return base;
+    });
+
+    res.json(out);
   } catch (err) {
     console.error("GET /api/events failed:", err);
     res.status(500).json({ error: "Failed to fetch events." });
@@ -1672,8 +1775,12 @@ app.get("/api/rsvps/event/:eventId", async (req, res) => {
     }
 
     const userIds = rsvps.map((r) => r.userId);
+    // NOTE: we MUST keep `_id` in the result here — we key the map below by
+    // `u._id.toString()`. A previous version selected "... -_id" which made
+    // `u._id` undefined and crashed every call to this route (the symptom on
+    // the cards was the "0 going" label never updating).
     const users = await User.find({ _id: { $in: userIds } })
-      .select("username name displayName profilePicture -_id")
+      .select("username name displayName profilePicture profilePictureType")
       .lean();
 
     const userMap = new Map(users.map((u) => [u._id.toString(), u]));
@@ -1697,6 +1804,79 @@ app.get("/api/rsvps/event/:eventId", async (req, res) => {
   } catch (err) {
     console.error("GET /api/rsvps/event/:eventId failed:", err);
     res.status(500).json({ error: "Could not load event attendees." });
+  }
+});
+
+// GET /api/events/:eventId/attendees
+// Returns every RSVP user for one event as the "People Going" modal payload:
+//   { attendees: [{ username, fullName, profilePicture, profilePictureType }] }
+//
+// Why a separate route from /api/rsvps/event/:eventId?
+//   - The legacy route returns { count, attendees:[{username,displayName,profilePicture}] }
+//     and is consumed by the event card avatar strip + View Details modal. We do not
+//     want to change its shape and risk breaking those views.
+//   - The People Going modal asks for a slightly different shape (fullName +
+//     profilePictureType), and the spec also wants a different error contract
+//     ({ message: "Event not found" } on 404). Keeping these concerns separated
+//     means RSVP, comments, friends, profiles, admin, and event filtering all keep
+//     working exactly as before.
+//
+// Errors:
+//   - 404 { message: "Event not found" } when the id is invalid or no event matches
+//   - 500 { message: "Could not load attendees." } on unexpected DB errors
+app.get("/api/events/:eventId/attendees", async (req, res) => {
+  try {
+    const eventId = req.params.eventId;
+    console.log("Loading attendees for event:", eventId);
+
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    const eventDoc = await Event.findById(eventId);
+    if (!eventDoc) {
+      return res.status(404).json({ message: "Event not found" });
+    }
+
+    const rsvps = await RSVP.find({ eventId: eventDoc._id }).sort({ _id: 1 }).lean();
+    if (rsvps.length === 0) {
+      return res.json({ attendees: [] });
+    }
+
+    const userIds = rsvps.map((r) => r.userId);
+    const users = await User.find({ _id: { $in: userIds } })
+      .select("username name displayName profilePicture profilePictureType")
+      .lean();
+
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+    const attendees = rsvps
+      .map((r) => {
+        const u = userMap.get(r.userId.toString());
+        if (!u) return null;
+        const username = typeof u.username === "string" ? u.username.trim() : "";
+        const display =
+          (u.displayName && String(u.displayName).trim()) ||
+          (u.name && String(u.name).trim()) ||
+          "";
+        const fullName = display || username;
+        const picture =
+          typeof u.profilePicture === "string" ? u.profilePicture : "";
+        const pictureType =
+          u.profilePictureType === "uploaded" ? "uploaded" : "default";
+        return {
+          username,
+          fullName,
+          profilePicture: picture,
+          profilePictureType: pictureType,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({ attendees });
+  } catch (err) {
+    console.error("GET /api/events/:eventId/attendees failed:", err);
+    res.status(500).json({ message: "Could not load attendees." });
   }
 });
 

@@ -717,6 +717,11 @@ document.addEventListener("DOMContentLoaded", function () {
   // Used to fetch the attendee count + first 3 profile pictures for each
   // event card's avatar stack. See loadEventAttendees() below.
   const RSVPS_EVENT_API_URL = LIVE_EVENT_API_BASE + "/rsvps/event";
+  // Dedicated "People Going" modal endpoint. Returns the full guest list as
+  //   { attendees: [{ username, fullName, profilePicture, profilePictureType }] }
+  // Kept separate from RSVPS_EVENT_API_URL so the card avatar strip + View
+  // Details modal (which share the older shape) keep working unchanged.
+  const EVENT_ATTENDEES_API_URL = LIVE_EVENT_API_BASE + "/events";
   // Event discussion threads — backed by MongoDB (see server.js comments routes).
   const EVENT_COMMENTS_API_URL = LIVE_EVENT_API_BASE + "/events";
   const DELETE_COMMENT_API_URL = LIVE_EVENT_API_BASE + "/comments";
@@ -956,8 +961,13 @@ document.addEventListener("DOMContentLoaded", function () {
               "You\u2019re already RSVP\u2019d to this event.",
               "info"
             );
+            // Already counted server-side — do NOT bump the local count.
           } else {
             showEventsBanner("You RSVP\u2019d to this event!", "success");
+            // Brand-new RSVP — show the new count instantly. The follow-up
+            // refresh below will overwrite this with the authoritative
+            // number (and the fresh avatar preview).
+            bumpEventAttendeeCount(rsvpButton, event, +1);
           }
           refreshEventCardAttendees(rsvpButton, event);
           return;
@@ -1019,10 +1029,20 @@ document.addEventListener("DOMContentLoaded", function () {
           // delete" as success (it's idempotent). Either way we end up
           // with no RSVP, so we revert to the blue button.
           resetRsvpButton(rsvpButton);
+          // Only decrement when the cache says we WERE counted — that way an
+          // idempotent "no RSVP to cancel" reply can never drop the number
+          // into negative territory.
+          var wasRsvped =
+            event &&
+            event.id &&
+            eventsCacheRsvpedIds.has(event.id);
           if (event && event.id) {
             eventsCacheRsvpedIds.delete(event.id);
           }
           showEventsBanner("Your RSVP was canceled.", "success");
+          if (wasRsvped) {
+            bumpEventAttendeeCount(rsvpButton, event, -1);
+          }
           refreshEventCardAttendees(rsvpButton, event);
           return;
         }
@@ -1059,16 +1079,38 @@ document.addEventListener("DOMContentLoaded", function () {
     return typeof s === "string" && /^data:image\/.+;base64,/i.test(s.trim());
   }
 
+  // Friendly "X going" label used on every event card and inside the
+  // View Details modal. The number always comes from the live RSVP count
+  // (either from GET /api/events `attendeeCount` or GET /api/rsvps/event/:id
+  // `count`) so the two views can never disagree.
+  //
+  //   formatGoingLabel(0) -> "0 people going"
+  //   formatGoingLabel(1) -> "1 person going"
+  //   formatGoingLabel(7) -> "7 people going"
+  function formatGoingLabel(count) {
+    var n = typeof count === "number" && count >= 0 ? Math.floor(count) : 0;
+    return n === 1 ? "1 person going" : n + " people going";
+  }
+
   // Build and inject the attendee avatar stack into an existing card element.
-  // `data` is the JSON body returned by GET /api/rsvps/event/:eventId.
+  // `data` may come from either:
+  //   - the events list payload      ({ count?, attendeeCount?, attendees })
+  //   - GET /api/rsvps/event/:eventId ({ count, attendees })
+  // so we accept `count` or `attendeeCount`, whichever the caller has.
   function renderAttendeesRow(container, data) {
     if (!container) return;
-    var count = (data && typeof data.count === "number") ? data.count : 0;
+    var rawCount =
+      data && typeof data.count === "number"
+        ? data.count
+        : data && typeof data.attendeeCount === "number"
+          ? data.attendeeCount
+          : 0;
+    var count = rawCount >= 0 ? rawCount : 0;
     var attendees = (data && Array.isArray(data.attendees)) ? data.attendees : [];
 
     if (count === 0) {
       container.innerHTML =
-        "<span class='event-attendees-count'>" + "0 going" + "</span>";
+        "<span class='event-attendees-count'>" + formatGoingLabel(0) + "</span>";
       return;
     }
 
@@ -1122,15 +1164,44 @@ document.addEventListener("DOMContentLoaded", function () {
 
     var countHtml =
       "<span class='event-attendees-count'>" +
-      count +
-      " going</span>";
+      formatGoingLabel(count) +
+      "</span>";
 
     container.innerHTML = stackHtml + overflowHtml + countHtml;
   }
 
+  // Update the cached event's `attendeeCount` + small `attendees` preview so
+  // future re-renders (filter changes, etc.) keep showing the same count
+  // without an extra fetch. Also patches the event object the caller passed
+  // into createEventCard so any handler closing over it (RSVP click, View
+  // Details) reads the latest number.
+  function updateCachedEventAttendees(eventId, data) {
+    if (!eventId) return;
+    var count =
+      data && typeof data.count === "number"
+        ? data.count
+        : data && typeof data.attendeeCount === "number"
+          ? data.attendeeCount
+          : 0;
+    var preview =
+      data && Array.isArray(data.attendees) ? data.attendees.slice(0, 3) : [];
+
+    if (Array.isArray(eventsCacheAll)) {
+      for (var i = 0; i < eventsCacheAll.length; i++) {
+        var ev = eventsCacheAll[i];
+        if (ev && ev.id === eventId) {
+          ev.attendeeCount = count;
+          ev.attendees = preview;
+          break;
+        }
+      }
+    }
+  }
+
   // Fetch attendee data for a single event and populate its card's
-  // .evt-page-card-attendee-strip (display-only). Silently no-ops on network error so
-  // the rest of the card still works fine.
+  // .evt-page-card-attendee-strip (display-only). On network error we keep
+  // whatever the strip is already showing (which is the pre-painted number
+  // from the events list payload) instead of wiping it to "0 people going".
   function loadEventAttendees(card, eventId) {
     if (!card || !eventId) return;
     var row = card.querySelector(".evt-page-card-attendee-strip");
@@ -1144,13 +1215,11 @@ document.addEventListener("DOMContentLoaded", function () {
       .then(function (data) {
         if (data) {
           renderAttendeesRow(row, data);
-        } else {
-          renderAttendeesRow(row, { count: 0, attendees: [] });
+          updateCachedEventAttendees(eventId, data);
         }
       })
       .catch(function (err) {
         console.warn("Could not load attendees for event " + eventId + ":", err);
-        renderAttendeesRow(row, { count: 0, attendees: [] });
       });
   }
 
@@ -1159,6 +1228,45 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!rsvpButton || !event || !event.id) return;
     var card = rsvpButton.closest(".event-card");
     if (card) loadEventAttendees(card, event.id);
+  }
+
+  // Immediately bump the card's "X going" label by +1 (just RSVP'd) or -1
+  // (just canceled) so the user sees feedback right away — no waiting on the
+  // follow-up GET. We also patch `event.attendeeCount` + `eventsCacheAll`
+  // so re-renders (filter changes, View Details, etc.) keep showing the
+  // same number until the authoritative refresh lands.
+  //
+  //   delta = +1 when a new RSVP was just created
+  //   delta = -1 when an RSVP was just canceled
+  // The min-of-0 guard prevents accidental negative counts if the cached
+  // value was stale.
+  function bumpEventAttendeeCount(rsvpButton, event, delta) {
+    if (!event || !event.id || typeof delta !== "number") return;
+
+    var current =
+      typeof event.attendeeCount === "number" ? event.attendeeCount : 0;
+    var next = Math.max(0, current + delta);
+    event.attendeeCount = next;
+
+    if (Array.isArray(eventsCacheAll)) {
+      for (var i = 0; i < eventsCacheAll.length; i++) {
+        var ev = eventsCacheAll[i];
+        if (ev && ev.id === event.id) {
+          ev.attendeeCount = next;
+          break;
+        }
+      }
+    }
+
+    if (!rsvpButton) return;
+    var card = rsvpButton.closest(".event-card");
+    if (!card) return;
+    var row = card.querySelector(".evt-page-card-attendee-strip");
+    if (!row) return;
+    renderAttendeesRow(row, {
+      count: next,
+      attendees: Array.isArray(event.attendees) ? event.attendees : [],
+    });
   }
 
   // Factory for one `<article class='event-card'>` DOM node (+ wiring).
@@ -1593,18 +1701,16 @@ document.addEventListener("DOMContentLoaded", function () {
     return html;
   }
 
-  // Update the "Going: …" line with the real count once it loads.
+  // Update the "Going: …" line with the real count.
+  // Uses the same label helper as the event card so the two views always
+  // display identical wording (e.g. card says "1 person going" → modal says
+  // "Going: 1 person going"). Negative or missing values fall back to 0.
   function updateGoingCount(count) {
     if (!detailsBody) return;
     const target = detailsBody.querySelector(".event-details-going-count");
     if (!target) return;
     const safe = typeof count === "number" && count >= 0 ? count : 0;
-    target.textContent =
-      safe === 0
-        ? "None yet"
-        : safe === 1
-          ? "1 RSVP"
-          : safe + " RSVPs";
+    target.textContent = formatGoingLabel(safe);
   }
 
   function populateEventDetailsAttendees(bodyEl, data) {
@@ -1666,7 +1772,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!attendeeRows || attendeeRows.length === 0) {
       var emptyP = document.createElement("p");
       emptyP.className = "people-going-empty";
-      emptyP.textContent = "No one has RSVP\u2019d yet.";
+      emptyP.textContent = "Nobody has RSVP\u2019d yet.";
       peopleGoingBody.appendChild(emptyP);
       return;
     }
@@ -1703,11 +1809,31 @@ document.addEventListener("DOMContentLoaded", function () {
     peopleGoingBody.appendChild(ul);
   }
 
+  function showPeopleGoingError(message) {
+    if (!peopleGoingBody) return;
+    var p = document.createElement("p");
+    p.className = "people-going-error";
+    p.textContent =
+      message && String(message).trim() !== ""
+        ? String(message)
+        : "Could not load the guest list. Try again in a moment.";
+    peopleGoingBody.innerHTML = "";
+    peopleGoingBody.appendChild(p);
+  }
+
   function openPeopleGoingModal(eventId) {
     if (!peopleGoingOverlay || !peopleGoingBody || !eventId) return;
-    // Exact URL for debugging (copy from DevTools if something breaks).
+
+    console.log("Loading attendees for event:", eventId);
+
+    // New dedicated guest-list endpoint:
+    //   GET /api/events/:eventId/attendees
+    // Returns { attendees: [{ username, fullName, profilePicture, profilePictureType }] }.
     var url =
-      RSVPS_EVENT_API_URL + "/" + encodeURIComponent(eventId);
+      EVENT_ATTENDEES_API_URL +
+      "/" +
+      encodeURIComponent(eventId) +
+      "/attendees";
     peopleGoingBody.innerHTML =
       "<p class='people-going-loading'>Loading\u2026</p>";
     peopleGoingOverlay.classList.remove("is-hidden");
@@ -1716,30 +1842,43 @@ document.addEventListener("DOMContentLoaded", function () {
       if (peopleGoingCloseBtn) peopleGoingCloseBtn.focus();
     }, 0);
 
-    fetch(url)
+    fetch(url, { headers: { Accept: "application/json" } })
       .then(function (response) {
-        if (!response.ok) {
+        // Try to parse the body either way so we can surface a backend
+        // message (e.g. "Event not found") on non-OK responses.
+        return response
+          .json()
+          .catch(function () {
+            return null;
+          })
+          .then(function (body) {
+            return { ok: response.ok, status: response.status, body: body };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          var backendMsg =
+            result.body && (result.body.message || result.body.error);
           console.error(
             "People Going modal: HTTP error for URL",
             url,
-            response.status
+            result.status,
+            backendMsg || ""
           );
-          peopleGoingBody.innerHTML =
-            "<p class='people-going-error'>Could not load the guest list. Try again in a moment.</p>";
-          return null;
+          showPeopleGoingError(backendMsg);
+          return;
         }
-        return response.json();
-      })
-      .then(function (body) {
-        if (!body) return;
         var rows =
-          body && Array.isArray(body.attendees) ? body.attendees : [];
+          result.body && Array.isArray(result.body.attendees)
+            ? result.body.attendees
+            : [];
         renderPeopleGoingModalBody(rows);
       })
       .catch(function (err) {
         console.error("People Going modal: network error for URL", url, err);
-        peopleGoingBody.innerHTML =
-          "<p class='people-going-error'>Could not load the guest list. Check your connection and try again.</p>";
+        showPeopleGoingError(
+          "Could not load the guest list. Check your connection and try again."
+        );
       });
   }
 
@@ -1963,7 +2102,15 @@ document.addEventListener("DOMContentLoaded", function () {
       if (detailsCloseBtn) detailsCloseBtn.focus();
     }, 0);
 
-    // Fetch the live attendee count for this event and patch it in.
+    // Show the cached count instantly so the modal matches the card the
+    // moment it opens — no "…" flicker, and no chance of disagreeing while
+    // the network request is in flight.
+    var cachedCount =
+      typeof event.attendeeCount === "number" ? event.attendeeCount : 0;
+    updateGoingCount(cachedCount);
+
+    // Then fetch the live attendee list to fill the full "Who's going"
+    // section and re-confirm the count against the server.
     if (event.id) {
       fetch(RSVPS_EVENT_API_URL + "/" + encodeURIComponent(event.id))
         .then(function (response) {
@@ -1973,17 +2120,18 @@ document.addEventListener("DOMContentLoaded", function () {
         .then(function (data) {
           if (data && typeof data.count === "number") {
             updateGoingCount(data.count);
-          } else {
-            updateGoingCount(0);
+            // Keep the cached number aligned with the server so the next
+            // card render (filter switch, etc.) stays accurate too.
+            event.attendeeCount = data.count;
+            updateCachedEventAttendees(event.id, data);
           }
           populateEventDetailsAttendees(detailsBody, data || {});
         })
         .catch(function () {
-          updateGoingCount(0);
+          // Keep the cached count visible — it's still our best guess.
           populateEventDetailsAttendees(detailsBody, { attendees: [] });
         });
     } else {
-      updateGoingCount(0);
       populateEventDetailsAttendees(detailsBody, { attendees: [] });
     }
 
@@ -2680,6 +2828,23 @@ document.addEventListener("DOMContentLoaded", function () {
     filtered.forEach(function (event) {
       const card = createEventCard(event, eventsCacheRsvpedIds);
       eventsContainer.appendChild(card);
+
+      // Pre-paint the "X going" strip from the data we already have on the
+      // events list payload (`attendeeCount` + first-3 `attendees`). This is
+      // why the card never has to flash "0 people going" while waiting on
+      // a follow-up fetch.
+      var strip = card.querySelector(".evt-page-card-attendee-strip");
+      if (strip) {
+        renderAttendeesRow(strip, {
+          count:
+            typeof event.attendeeCount === "number" ? event.attendeeCount : 0,
+          attendees: Array.isArray(event.attendees) ? event.attendees : [],
+        });
+      }
+
+      // Then refresh asynchronously so the avatar stack and count stay
+      // current if another user RSVPs in another tab (or if the cached
+      // preview is out of date for any reason).
       if (event.id) {
         loadEventAttendees(card, event.id);
       }
@@ -3110,26 +3275,39 @@ function isSafeProfilePictureDataUrl(s) {
 }
 
 /**
- * RSVP list from GET /api/rsvps/event/:eventId only sends username,
- * displayName, and profilePicture — never email/password/other user fields.
- * Our avatar helper also wants profilePictureType; infer it safely here.
+ * Normalize one row from either attendee endpoint into the shape every
+ * caller below assumes:
+ *   - GET /api/rsvps/event/:eventId  -> { username, displayName, profilePicture }
+ *   - GET /api/events/:eventId/attendees ->
+ *       { username, fullName, profilePicture, profilePictureType }
+ *
+ * We coalesce displayName/fullName/name and only mark a picture as
+ * "uploaded" when it is a safe data URL — otherwise we treat it as a
+ * default avatar id (or empty fallback).
  */
 function normalizeRsvpEventAttendee(raw) {
   var username =
     raw && raw.username ? String(raw.username).trim() : "";
   var displayName =
     raw && raw.displayName ? String(raw.displayName).trim() : "";
+  var fullName =
+    raw && raw.fullName ? String(raw.fullName).trim() : "";
+  var altName =
+    raw && raw.name ? String(raw.name).trim() : "";
+  var resolvedDisplay = displayName || fullName || altName || "";
   var pic =
     raw && raw.profilePicture ? String(raw.profilePicture).trim() : "";
   var profilePictureType = "default";
-  if (pic && isSafeProfilePictureDataUrl(pic)) {
+  if (raw && (raw.profilePictureType === "default" || raw.profilePictureType === "uploaded")) {
+    profilePictureType = raw.profilePictureType;
+  } else if (pic && isSafeProfilePictureDataUrl(pic)) {
     profilePictureType = "uploaded";
   }
   return {
     username: username,
-    displayName: displayName,
-    name: displayName || username || "Member",
-    fullName: displayName || username || "Member",
+    displayName: resolvedDisplay,
+    name: resolvedDisplay || username || "Member",
+    fullName: resolvedDisplay || username || "Member",
     profilePicture: pic,
     profilePictureType: profilePictureType,
   };
