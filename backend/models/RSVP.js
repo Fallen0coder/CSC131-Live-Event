@@ -12,7 +12,8 @@ const mongoose = require("mongoose");
 // Frontend connection:
 //   - POST /api/rsvp saves a row here (after login/signup gave the user.id).
 //   - DELETE /api/rsvp removes the row (“cancel”).
-//   - GET /api/rsvps/event/:eventId aggregates how many RSVP’d + a few avatar previews for cards.
+//   - GET /api/rsvps/event/:eventId returns RSVP count plus every attendee’s *public*
+//     username / display name / profile picture (cards + People Going modal + View Details).
 //   - GET /api/rsvps/:username loads “events I’m going to” for a profile.
 //
 // Duplicate protection: Compound unique index below means the same pair (userId, eventId)

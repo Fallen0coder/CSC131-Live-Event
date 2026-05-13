@@ -683,8 +683,8 @@ if (featuredEventsContainer) {
 //
 // Editing: openEditEventModal + form submit sends PUT /api/events/:id.
 //
-// Details: openEventDetailsModal fills #event-details-body (mostly static data;
-//          optional GET attendee count).
+// Details: View Details modal + People Going roster both hydrate from
+//          GET /api/rsvps/event/:id when needed.
 // ===========================================================================
 document.addEventListener("DOMContentLoaded", function () {
   const eventsContainer = document.getElementById("events-container");
@@ -1075,22 +1075,16 @@ document.addEventListener("DOMContentLoaded", function () {
     var maxDots = Math.min(3, attendees.length);
     var stackHtml = "<div class='event-avatar-stack'>";
     for (var i = 0; i < maxDots; i++) {
-      var a = attendees[i];
-      var uname = a && a.username ? String(a.username).trim() : "";
+      var a = normalizeRsvpEventAttendee(attendees[i]);
+      var uname = a.username;
       var inner = "";
-      if (
-        a &&
-        a.profilePictureType === "uploaded" &&
-        isSafeDataUrl(a.profilePicture)
-      ) {
+      if (a.profilePictureType === "uploaded" && isSafeDataUrl(a.profilePicture)) {
         var escapedPic = a.profilePicture.replace(/'/g, "%27");
         inner =
           "<img class='event-avatar-img' src='" +
           escapedPic +
           "' alt='' />";
       } else if (
-        a &&
-        a.profilePictureType === "default" &&
         a.profilePicture &&
         typeof getDefaultAvatar === "function"
       ) {
@@ -1108,7 +1102,7 @@ document.addEventListener("DOMContentLoaded", function () {
           escapeHtmlPublic(
             navProfileInitialLetter({
               username: uname,
-              displayName: a && a.displayName,
+              displayName: a.displayName,
             })
           ) +
           "</span>";
@@ -1135,11 +1129,11 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // Fetch attendee data for a single event and populate its card's
-  // .event-card-rsvp-preview strip. Silently no-ops on network error so
+  // .evt-page-card-attendee-strip (display-only). Silently no-ops on network error so
   // the rest of the card still works fine.
   function loadEventAttendees(card, eventId) {
     if (!card || !eventId) return;
-    var row = card.querySelector(".event-card-rsvp-preview");
+    var row = card.querySelector(".evt-page-card-attendee-strip");
     if (!row) return;
 
     fetch(RSVPS_EVENT_API_URL + "/" + encodeURIComponent(eventId))
@@ -1256,8 +1250,19 @@ document.addEventListener("DOMContentLoaded", function () {
         "</p>";
     }
 
-    // Attendee preview strip + count — display-only (no click handlers).
-    html += "<div class='event-card-rsvp-preview'></div>";
+    // Attendee preview strip + full roster modal (same GET as card stack).
+    if (event.id) {
+      html +=
+        "<div class='evt-page-card-attendee-strip evt-page-card-attendee-strip--interactive'" +
+        " data-event-id='" +
+        escapeHtml(String(event.id)) +
+        "'" +
+        " role='button'" +
+        " tabindex='0'" +
+        " aria-label='People going\u2014view everyone who RSVP\u2019d'></div>";
+    } else {
+      html += "<div class='evt-page-card-attendee-strip'></div>";
+    }
 
     html += "<div class='event-card-actions'>";
     html += "<button class='rsvp-btn' type='button'>RSVP</button>";
@@ -1445,6 +1450,11 @@ document.addEventListener("DOMContentLoaded", function () {
   const detailsBody = document.getElementById("event-details-body");
   const detailsCloseBtn = document.getElementById("event-details-close-btn");
 
+  // "People Going" roster — attendee row on each card opens this overlay.
+  const peopleGoingOverlay = document.getElementById("people-going-overlay");
+  const peopleGoingBody = document.getElementById("people-going-body");
+  const peopleGoingCloseBtn = document.getElementById("people-going-close-btn");
+
   // Build the inner HTML of the modal body for one event. All user-
   // supplied text passes through escapeHtml() and the image src is
   // sanitized the same way as the cards (only data:image/*;base64,…).
@@ -1541,7 +1551,7 @@ document.addEventListener("DOMContentLoaded", function () {
           "Who\u2019s going" +
         "</h4>" +
         "<ul id='event-details-attendees-list' class='event-details-attendees-list' " +
-          "aria-label='People who RSVP\u2019d'></ul>" +
+          "aria-label='Users who RSVP\u2019d'></ul>" +
       "</section>";
 
     // Full description (no clamping in the modal — show it all).
@@ -1590,7 +1600,11 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!target) return;
     const safe = typeof count === "number" && count >= 0 ? count : 0;
     target.textContent =
-      safe + (safe === 1 ? " person going" : " people going");
+      safe === 0
+        ? "None yet"
+        : safe === 1
+          ? "1 RSVP"
+          : safe + " RSVPs";
   }
 
   function populateEventDetailsAttendees(bodyEl, data) {
@@ -1607,32 +1621,126 @@ document.addEventListener("DOMContentLoaded", function () {
       return;
     }
     attendees.forEach(function (a) {
+      var prof = normalizeRsvpEventAttendee(a);
       var li = document.createElement("li");
       li.className = "event-details-attendee-row";
       var link = document.createElement("a");
       link.className = "event-details-attendee-link";
-      link.href = getPublicProfilePageUrl(a.username);
+      link.href = getPublicProfilePageUrl(prof.username);
       var av = document.createElement("div");
-      fillUserAvatarFromProfile(av, a);
+      fillUserAvatarFromProfile(av, prof);
       link.appendChild(av);
       var text = document.createElement("div");
       text.className = "event-details-attendee-text";
       var nameEl = document.createElement("span");
       nameEl.className = "event-details-attendee-name";
       var disp =
-        a.displayName && String(a.displayName).trim() !== ""
-          ? String(a.displayName).trim()
+        prof.displayName && prof.displayName !== ""
+          ? prof.displayName
           : "";
-      nameEl.textContent = disp !== "" ? disp : a.username || "Member";
+      nameEl.textContent = disp !== "" ? disp : prof.username || "Member";
       var handle = document.createElement("span");
       handle.className = "event-details-attendee-handle";
-      handle.textContent = a.username ? "@" + a.username : "";
+      handle.textContent = prof.username ? "@" + prof.username : "";
       text.appendChild(nameEl);
       text.appendChild(handle);
       link.appendChild(text);
       li.appendChild(link);
       ul.appendChild(li);
     });
+  }
+
+  // -------------------------------------------------------------------------
+  // People Going modal — full RSVP list for one event (opens from card row)
+  // -------------------------------------------------------------------------
+  // Data source: GET /api/rsvps/event/:eventId (same URL the card stack uses).
+  function closePeopleGoingModal() {
+    if (!peopleGoingOverlay || !peopleGoingBody) return;
+    peopleGoingOverlay.classList.add("is-hidden");
+    peopleGoingBody.innerHTML = "";
+  }
+
+  function renderPeopleGoingModalBody(attendeeRows) {
+    if (!peopleGoingBody) return;
+    peopleGoingBody.innerHTML = "";
+    if (!attendeeRows || attendeeRows.length === 0) {
+      var emptyP = document.createElement("p");
+      emptyP.className = "people-going-empty";
+      emptyP.textContent = "No one has RSVP\u2019d yet.";
+      peopleGoingBody.appendChild(emptyP);
+      return;
+    }
+    var ul = document.createElement("ul");
+    ul.className = "people-going-list";
+    ul.setAttribute("aria-label", "Everyone who RSVP\u2019d");
+    attendeeRows.forEach(function (raw) {
+      var prof = normalizeRsvpEventAttendee(raw);
+      var li = document.createElement("li");
+      var link = document.createElement("a");
+      link.className = "people-going-row event-details-attendee-link";
+      link.href = getPublicProfilePageUrl(prof.username);
+      var av = document.createElement("div");
+      fillUserAvatarFromProfile(av, prof);
+      link.appendChild(av);
+      var text = document.createElement("div");
+      text.className = "event-details-attendee-text";
+      var nameEl = document.createElement("span");
+      nameEl.className = "event-details-attendee-name";
+      var disp =
+        prof.displayName && prof.displayName !== ""
+          ? prof.displayName
+          : "";
+      nameEl.textContent = disp !== "" ? disp : prof.username || "Member";
+      var handle = document.createElement("span");
+      handle.className = "event-details-attendee-handle";
+      handle.textContent = prof.username ? "@" + prof.username : "";
+      text.appendChild(nameEl);
+      text.appendChild(handle);
+      link.appendChild(text);
+      li.appendChild(link);
+      ul.appendChild(li);
+    });
+    peopleGoingBody.appendChild(ul);
+  }
+
+  function openPeopleGoingModal(eventId) {
+    if (!peopleGoingOverlay || !peopleGoingBody || !eventId) return;
+    // Exact URL for debugging (copy from DevTools if something breaks).
+    var url =
+      RSVPS_EVENT_API_URL + "/" + encodeURIComponent(eventId);
+    peopleGoingBody.innerHTML =
+      "<p class='people-going-loading'>Loading\u2026</p>";
+    peopleGoingOverlay.classList.remove("is-hidden");
+    peopleGoingBody.scrollTop = 0;
+    setTimeout(function () {
+      if (peopleGoingCloseBtn) peopleGoingCloseBtn.focus();
+    }, 0);
+
+    fetch(url)
+      .then(function (response) {
+        if (!response.ok) {
+          console.error(
+            "People Going modal: HTTP error for URL",
+            url,
+            response.status
+          );
+          peopleGoingBody.innerHTML =
+            "<p class='people-going-error'>Could not load the guest list. Try again in a moment.</p>";
+          return null;
+        }
+        return response.json();
+      })
+      .then(function (body) {
+        if (!body) return;
+        var rows =
+          body && Array.isArray(body.attendees) ? body.attendees : [];
+        renderPeopleGoingModalBody(rows);
+      })
+      .catch(function (err) {
+        console.error("People Going modal: network error for URL", url, err);
+        peopleGoingBody.innerHTML =
+          "<p class='people-going-error'>Could not load the guest list. Check your connection and try again.</p>";
+      });
   }
 
   // The modal's fetch handlers read this ref so they always know which event
@@ -1894,6 +2002,18 @@ document.addEventListener("DOMContentLoaded", function () {
     detailsCloseBtn.addEventListener("click", closeEventDetailsModal);
   }
 
+  // People Going modal — close controls.
+  if (peopleGoingCloseBtn) {
+    peopleGoingCloseBtn.addEventListener("click", closePeopleGoingModal);
+  }
+  if (peopleGoingOverlay) {
+    peopleGoingOverlay.addEventListener("click", function (ev) {
+      if (ev.target === peopleGoingOverlay) {
+        closePeopleGoingModal();
+      }
+    });
+  }
+
   // Click on the dark backdrop (but NOT the inner card) closes the modal.
   // We also delegate comment actions here so dynamically injected markup works.
   if (detailsOverlay) {
@@ -2027,8 +2147,17 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   document.addEventListener("keydown", function (keyEvent) {
+    if (keyEvent.key !== "Escape") return;
+    // Close the roster first if both overlays were ever stacked (belt & suspenders).
     if (
-      keyEvent.key === "Escape" &&
+      peopleGoingOverlay &&
+      !peopleGoingOverlay.classList.contains("is-hidden")
+    ) {
+      closePeopleGoingModal();
+      keyEvent.preventDefault();
+      return;
+    }
+    if (
       detailsOverlay &&
       !detailsOverlay.classList.contains("is-hidden")
     ) {
@@ -2579,6 +2708,28 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 
+  // Card attendee row — opens centered "People Going" modal listing every RSVP.
+  eventsContainer.addEventListener("click", function (ev) {
+    var strip = ev.target.closest(
+      ".evt-page-card-attendee-strip--interactive"
+    );
+    if (!strip || !eventsContainer.contains(strip)) return;
+    var evtId = strip.getAttribute("data-event-id");
+    if (!evtId) return;
+    openPeopleGoingModal(evtId);
+  });
+
+  eventsContainer.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    var strip = ev.target.closest(
+      ".evt-page-card-attendee-strip--interactive"
+    );
+    if (!strip || !eventsContainer.contains(strip)) return;
+    ev.preventDefault();
+    var evtId = strip.getAttribute("data-event-id");
+    if (evtId) openPeopleGoingModal(evtId);
+  });
+
   function loadEvents() {
     showLoadingState();
 
@@ -2956,6 +3107,32 @@ function getDefaultAvatar(id) {
 /** Same rule as event-card avatars: only allow real image data URLs. */
 function isSafeProfilePictureDataUrl(s) {
   return typeof s === "string" && /^data:image\/.+;base64,/i.test(s.trim());
+}
+
+/**
+ * RSVP list from GET /api/rsvps/event/:eventId only sends username,
+ * displayName, and profilePicture — never email/password/other user fields.
+ * Our avatar helper also wants profilePictureType; infer it safely here.
+ */
+function normalizeRsvpEventAttendee(raw) {
+  var username =
+    raw && raw.username ? String(raw.username).trim() : "";
+  var displayName =
+    raw && raw.displayName ? String(raw.displayName).trim() : "";
+  var pic =
+    raw && raw.profilePicture ? String(raw.profilePicture).trim() : "";
+  var profilePictureType = "default";
+  if (pic && isSafeProfilePictureDataUrl(pic)) {
+    profilePictureType = "uploaded";
+  }
+  return {
+    username: username,
+    displayName: displayName,
+    name: displayName || username || "Member",
+    fullName: displayName || username || "Member",
+    profilePicture: pic,
+    profilePictureType: profilePictureType,
+  };
 }
 
 /** First letter for the fallback disc (matches profile header behavior). */
