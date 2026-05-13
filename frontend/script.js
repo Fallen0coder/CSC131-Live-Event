@@ -449,18 +449,47 @@ function featuredCategoryLabel(category) {
   return key.charAt(0).toUpperCase() + key.slice(1);
 }
 
-// Format a date string (e.g. "2026-05-14") into "May 14, 2026". If the
-// browser can't parse it, we just show the raw value so we never lose
-// information.
-function featuredFormatDate(dateString) {
+// Events store `date` as "YYYY-MM-DD" from <input type="date">. Parsing that with
+// `new Date("YYYY-MM-DD")` uses UTC midnight, so `toLocaleDateString` in US zones
+// often shows the previous calendar day. Split the string and use `new Date(y, m-1, d)`
+// so the displayed day matches what the user selected (local calendar date).
+function formatStoredEventDateForDisplay(dateString) {
   if (!dateString) return "";
-  const parsed = new Date(dateString);
-  if (isNaN(parsed.getTime())) return String(dateString);
-  return parsed.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "long",
-    day: "numeric"
-  });
+  const s = String(dateString).trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (iso) {
+    const y = parseInt(iso[1], 10);
+    const mo = parseInt(iso[2], 10) - 1;
+    const d = parseInt(iso[3], 10);
+    if (y > 0 && mo >= 0 && mo <= 11 && d >= 1 && d <= 31) {
+      const local = new Date(y, mo, d);
+      if (
+        local.getFullYear() === y &&
+        local.getMonth() === mo &&
+        local.getDate() === d
+      ) {
+        return local.toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      }
+    }
+  }
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
+  return s;
+}
+
+// Format a stored event date into "May 14, 2026" (same rules as formatStoredEventDateForDisplay).
+function featuredFormatDate(dateString) {
+  return formatStoredEventDateForDisplay(dateString);
 }
 
 // Format a "HH:MM" time (e.g. "14:00") into a 12-hour string ("2:00 PM").
@@ -802,14 +831,7 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function formatEventDate(dateString) {
-    if (!dateString) return "";
-    const parsed = new Date(dateString);
-    if (isNaN(parsed.getTime())) return dateString;
-    return parsed.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    });
+    return formatStoredEventDateForDisplay(dateString);
   }
 
   function formatEventTime(timeString) {
@@ -6697,17 +6719,9 @@ document.addEventListener("DOMContentLoaded", function () {
     listEl.appendChild(p);
   }
 
-  // Friendly date string. Falls back to the raw input if it can't
-  // parse so we never display "Invalid Date".
+  // Same calendar-date rules as event cards (RSVP rows show event.date).
   function formatRsvpDate(dateString) {
-    if (!dateString) return "";
-    const parsed = new Date(dateString);
-    if (isNaN(parsed.getTime())) return dateString;
-    return parsed.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "long",
-      day: "numeric"
-    });
+    return formatStoredEventDateForDisplay(dateString);
   }
 
   // Friendly 12-hour time string (e.g. "7:30 PM"). Accepts both
