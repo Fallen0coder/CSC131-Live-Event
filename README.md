@@ -46,29 +46,57 @@ The Live Event Web App is a full-stack web application designed to help college 
 
 * MongoDB Atlas (used for storing users, profiles, friends, and RSVPs)
 
+### Cloud Platform
+
+* Render (used for hosting the Node.js backend API and deploying the Live Event web application)
+
 ---
 
 ## 📂 Project Structure
 
 ```
 CSC131-Live-Event/
-  frontend/
-    index.html
-    events.html
-    login.html
-    signup.html
-    profile.html
-    about.html
-    settings.html
-    style.css
-    script.js
-
-  backend/
-    server.js
-    package.json
-
-  README.md
-  .gitignore
+│
+├── backend/
+│   ├── models/
+│   │   ├── FriendRequest.js
+│   │   ├── GroupChat.js
+│   │   ├── GroupChatMessage.js
+│   │   ├── Message.js
+│   │   ├── RSVP.js
+│   │   └── User.js
+│   │
+│   ├── node_modules/
+│   ├── .env
+│   ├── .gitignore
+│   ├── package-lock.json
+│   ├── package.json
+│   └── server.js
+│
+├── frontend/
+│   ├── images/
+│   │
+│   ├── about.html
+│   ├── add-event.html
+│   ├── early-init.js
+│   ├── events.html
+│   ├── friends.html
+│   ├── index.html
+│   ├── login.html
+│   ├── profile.html
+│   ├── public-profile.html
+│   ├── script.js
+│   ├── settings.html
+│   ├── signup.html
+│   └── style.css
+│
+├── node_modules/
+├── .gitignore
+├── CSC131-Live-Event.code-workspace
+├── package-lock.json
+├── package.json
+├── README.md
+└── render.yaml
 ```
 
 ---
@@ -113,7 +141,7 @@ http://localhost:3000
 * ✅ Backend API created
 * ✅ Frontend connected to backend
 * ✅ Database integration (MongoDB) in progress
-* 🔄 Deployment pending
+* ✅ Deployment pending
 
 ---
 
