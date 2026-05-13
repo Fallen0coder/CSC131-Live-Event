@@ -2,7 +2,7 @@
 
 ## 🌐 Live Deployment
 
-[(https://liveevent2026.netlify.app/index.html)]
+[(https://csc-131-live-event.vercel.app/)]
 
 
 ---
