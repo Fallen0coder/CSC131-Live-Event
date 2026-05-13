@@ -2,7 +2,7 @@
 
 ## 🌐 Live Demo
 
-*(Add your deployed link here when ready)*
+[(https://liveevent2026.netlify.app/index.html)]
 
 
 ---
